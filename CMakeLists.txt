@@ -17,6 +17,7 @@ set(CMAKE_CXX_STANDARD 14)
 
 option(BUILD_WELLE_IO    "Build Welle.io"                        ON  )
 option(BUILD_WELLE_CLI   "Build welle-cli"                       ON  )
+option(LIBWELLE_STATIC   "Build the welle library as static"     ON  )
 option(WITH_APP_BUNDLE   "Enable Application Bundle for macOS"   ON  )
 option(KISS_FFT          "KISS FFT instead of FFTW"              OFF )
 option(PROFILING         "Enable profiling (see README.md)"      OFF )
@@ -360,8 +361,13 @@ add_definitions("-DCURRENT_VERSION=\"${CURRENT_VERSION}\"")
 STRING(TIMESTAMP BUILD_DATE "%s" UTC)
 add_definitions("-DBUILD_DATE=\"${BUILD_DATE}\"")
 
-add_library(welle STATIC
-#add_library(welle SHARED
+if (LIBWELLE_STATIC)
+  set(STATIC_OR_SHARED STATIC)
+else ()
+  set(STATIC_OR_SHARED SHARED)
+endif()
+
+add_library(welle ${STATIC_OR_SHARED}
     ${backend_sources}
     ${faad_sources}
     ${fft_sources}
@@ -396,9 +402,11 @@ target_link_libraries(welle PRIVATE
       ${MPG123_LIBRARIES}
 )
 
-#install(TARGETS welle
-#    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-#)
+if (NOT LIBWELLE_STATIC)
+install(TARGETS welle
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+endif()
 
 if(BUILD_WELLE_IO)
     set(executableName welle-io)
