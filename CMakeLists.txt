@@ -360,14 +360,54 @@ add_definitions("-DCURRENT_VERSION=\"${CURRENT_VERSION}\"")
 STRING(TIMESTAMP BUILD_DATE "%s" UTC)
 add_definitions("-DBUILD_DATE=\"${BUILD_DATE}\"")
 
+add_library(welle STATIC
+#add_library(welle SHARED
+    ${backend_sources}
+    ${faad_sources}
+    ${fft_sources}
+    ${input_sources}
+    ${mpg123_sources}
+)
+
+string(REGEX MATCHALL
+    "([0-9]+)"
+    LIB_MATCH
+    "${CURRENT_VERSION}"
+)
+
+list(POP_FRONT LIB_MATCH LIB_MATCH_1)
+list(POP_FRONT LIB_MATCH LIB_MATCH_2)
+if (NOT LIB_MATCH STREQUAL "")
+    list(POP_FRONT LIB_MATCH LIB_MATCH_3)
+else ()
+    set(LIB_MATCH_3 0)
+endif ()
+
+set_property(TARGET welle PROPERTY VERSION "${LIB_MATCH_1}.${LIB_MATCH_2}.${LIB_MATCH_3}")
+set_property(TARGET welle PROPERTY SOVERSION "${LIB_MATCH_1}")
+set_property(TARGET welle PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+target_link_libraries(welle PRIVATE
+      ${LIBRTLSDR_LIBRARIES}
+      ${LIBAIRSPY_LIBRARIES}
+      ${FFTW3F_LIBRARIES}
+      ${AAC_LIBRARIES}
+      ${SoapySDR_LIBRARIES}
+      ${MPG123_LIBRARIES}
+)
+
+#install(TARGETS welle
+#    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+#)
+
 if(BUILD_WELLE_IO)
     set(executableName welle-io)
 
     if(CMAKE_AUTORCC)
-        qt_add_executable (${executableName} MANUAL_FINALIZATION ${welle_io_sources} ${backend_sources} ${input_sources} ${fft_sources} ${mpg123_sources} ${faad_sources} ${EXTRA_MOCS} src/welle-gui/resources.qrc)
+        qt_add_executable (${executableName} MANUAL_FINALIZATION ${welle_io_sources} ${EXTRA_MOCS} src/welle-gui/resources.qrc)
     else()
         qt_add_resources(welle_io_sources src/welle-gui/resources.qrc)
-        qt_add_executable (${executableName} MANUAL_FINALIZATION ${welle_io_sources} ${backend_sources} ${input_sources} ${fft_sources} ${mpg123_sources} ${faad_sources} ${EXTRA_MOCS})
+        qt_add_executable (${executableName} MANUAL_FINALIZATION ${welle_io_sources} ${EXTRA_MOCS})
     endif()
 
     if(ANDROID)
@@ -428,12 +468,7 @@ if(BUILD_WELLE_IO)
     endif()
 
     target_link_libraries (${executableName} PRIVATE
-      ${LIBRTLSDR_LIBRARIES}
-      ${LIBAIRSPY_LIBRARIES}
-      ${FFTW3F_LIBRARIES}
-      ${AAC_LIBRARIES}
-      ${SoapySDR_LIBRARIES}
-      ${MPG123_LIBRARIES}
+      welle
       Threads::Threads
       Qt6::Core Qt6::Widgets Qt6::Multimedia Qt6::Charts Qt6::Qml Qt6::Quick Qt6::QuickControls2
     )
@@ -476,9 +511,6 @@ if(BUILD_WELLE_CLI AND NOT ANDROID)
     set(cliExecutableName welle-cli)
     add_executable (${cliExecutableName}
         ${welle_cli_sources}
-        ${backend_sources}
-        ${input_sources}
-        ${fft_sources}
         index.html.h
         index.js.h
         favicon.ico.h)
@@ -489,14 +521,9 @@ if(BUILD_WELLE_CLI AND NOT ANDROID)
     endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
     target_link_libraries (${cliExecutableName}
-      ${LIBRTLSDR_LIBRARIES}
-      ${LIBAIRSPY_LIBRARIES}
-      ${FFTW3F_LIBRARIES}
-      ${AAC_LIBRARIES}
+      welle
       ${ALSA_LIBRARIES}
       ${LAME_LIBRARIES}
-      ${SoapySDR_LIBRARIES}
-      ${MPG123_LIBRARIES}
       ${FLACPP_LIBRARIES}
       Threads::Threads
     )
