@@ -305,7 +305,6 @@ set(welle_cli_sources
 set(welle_pi_sources
     src/welle-pi/welle-pi.cpp
     src/welle-cli/alsa-output.cpp
-    src/welle-cli/jsonconvert.cpp
 )
 
 set(input_sources
