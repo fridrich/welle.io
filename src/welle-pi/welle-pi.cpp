@@ -431,16 +431,16 @@ int main(int argc, char **argv)
 
     cerr << "Wait for sync" << endl;
     while (not ri.synced) {
-        this_thread::sleep_for(chrono::milliseconds(200));
+        this_thread::sleep_for(chrono::seconds(1));
     }
 
     cerr << "Wait for service list" << endl;
     while (rx.getServiceList().empty()) {
-         this_thread::sleep_for(chrono::milliseconds(200));
+         this_thread::sleep_for(chrono::seconds(1));
     }
 
-    // Wait an additional 2 seconds so that the receiver can complete the service list
-    this_thread::sleep_for(chrono::seconds(2));
+    // Wait an additional 3 seconds so that the receiver can complete the service list
+    this_thread::sleep_for(chrono::seconds(3));
 
     AlsaProgrammeHandler ph(&lcdIS);
     while (not service_to_tune.empty()) {
