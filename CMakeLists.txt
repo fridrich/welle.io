@@ -595,6 +595,9 @@ if (BUILD_WELLE_PI)
         ${LIBLCD_LIBRARIES}
         Threads::Threads
     )
+    if(UNIX AND NOT APPLE OR NOT WITH_APP_BUNDLE)
+        INSTALL (TARGETS ${piExecutableName} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    endif()
 endif()
 
 configure_file(
