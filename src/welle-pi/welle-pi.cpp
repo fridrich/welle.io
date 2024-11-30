@@ -200,7 +200,7 @@ class RadioInterface : public RadioControllerInterface {
 
         virtual void onSetEnsembleLabel(DabLabel& label) override
         {
-            cout << "Ensemble label: " << label.utf8_label() << endl;
+            // cout << "Ensemble label: " << label.utf8_label() << endl;
             lcdInfoScreen->setChannelName(label.utf8_label());
         }
 
@@ -424,7 +424,6 @@ int main(int argc, char **argv)
     auto freq = channels.getFrequency(options.channel);
     in->setFrequency(freq);
     string service_to_tune = options.programme;
-    lcdIS.setProgramName("Starting radio");
 
     RadioReceiver rx(ri, *in, options.rro);
 
