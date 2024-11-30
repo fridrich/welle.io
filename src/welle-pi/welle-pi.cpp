@@ -45,12 +45,8 @@
 #  include "soapy_sdr.h"
 #endif
 #include "rtl_tcp.h"
-#if defined(HAVE_ALSA)
-#  include "welle-cli/alsa-output.h"
-#endif
-#if defined(HAVE_LIBLCD)
-#  include <liblcd/liblcd.h>
-#endif
+#include "welle-cli/alsa-output.h"
+#include <liblcd/liblcd.h>
 #include "backend/radio-receiver.h"
 #include "input/input_factory.h"
 #include "various/channels.h"
@@ -64,9 +60,6 @@
 
 using namespace std;
 
-using namespace nlohmann;
-
-#if defined(HAVE_LIBLCD)
 class LCDInfoScreen
 {
     public:
@@ -144,14 +137,10 @@ class LCDInfoScreen
         bool m_changed = true;
         bool m_exit = false;
 };
-#endif
 
-#if defined(HAVE_ALSA)
 class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
     public:
-#if defined(HAVE_LIBLCD)
         AlsaProgrammeHandler(LCDInfoScreen* infoScreen) : lcdInfoScreen(infoScreen) {}
-#endif
         virtual void onFrameErrors(int frameErrors) override { (void)frameErrors; }
         virtual void onNewAudio(vector<int16_t>&& audioData, int sampleRate, const string& mode) override
         {
@@ -175,9 +164,7 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
         virtual void onNewDynamicLabel(const string& label) override
         {
             cout << "DLS: " << label << endl;
-#if defined(HAVE_LIBLCD)
             lcdInfoScreen->setDLS(label);
-#endif
         }
 
         virtual void onMOT(const mot_file_t& mot_file) override { (void)mot_file; }
@@ -191,17 +178,12 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
         unique_ptr<AlsaOutput> ao;
         bool stereo = true;
         unsigned int rate = 48000;
-#if defined(HAVE_LIBLCD)
         LCDInfoScreen* lcdInfoScreen;
-#endif
 };
-#endif // defined(HAVE_ALSA)
 
 class RadioInterface : public RadioControllerInterface {
     public:
-#if defined(HAVE_LIBLCD)
         RadioInterface(LCDInfoScreen* infoScreen) : lcdInfoScreen(infoScreen) {}
-#endif
         virtual void onSNR(float /*snr*/) override { }
         virtual void onFrequencyCorrectorChange(int /*fine*/, int /*coarse*/) override { }
         virtual void onSyncChange(char isSync) override { synced = isSync; }
@@ -219,34 +201,12 @@ class RadioInterface : public RadioControllerInterface {
         virtual void onSetEnsembleLabel(DabLabel& label) override
         {
             cout << "Ensemble label: " << label.utf8_label() << endl;
-#if defined(HAVE_LIBLCD)
             lcdInfoScreen->setChannelName(label.utf8_label());
-#endif
         }
 
         virtual void onDateTimeUpdate(const dab_date_time_t& dateTime) override { (void)dateTime; }
 
-        virtual void onFIBDecodeSuccess(bool crcCheckOk, const uint8_t* fib) override {
-            if (fic_fd) {
-                if (not crcCheckOk) {
-                    return;
-                }
-
-                // convert bitvector to byte vector
-                vector<uint8_t> buf(32);
-                for (size_t i = 0; i < buf.size(); i++) {
-                    uint8_t v = 0;
-                    for (int j = 0; j < 8; j++) {
-                        if (fib[8*i+j]) {
-                            v |= 1 << (7-j);
-                        }
-                    }
-                    buf[i] = v;
-                }
-
-                fwrite(buf.data(), buf.size(), sizeof(buf[0]), fic_fd);
-            }
-        }
+        virtual void onFIBDecodeSuccess(bool /* crcCheckOk */, const uint8_t* /* fib */) override { }
         virtual void onNewImpulseResponse(vector<float>&& data) override { (void)data; }
         virtual void onNewNullSymbol(vector<DSPCOMPLEX>&& data) override { (void)data; }
         virtual void onConstellationPoints(vector<DSPCOMPLEX>&& data) override { (void)data; }
@@ -270,12 +230,8 @@ class RadioInterface : public RadioControllerInterface {
 
         virtual void onTIIMeasurement(tii_measurement_t&& m) override { (void)m; }
 
-        json last_date_time;
         bool synced = false;
-        FILE* fic_fd = nullptr;
-#if defined(HAVE_LIBLCD)
         LCDInfoScreen* lcdInfoScreen;
-#endif
 };
 
 struct options_t {
@@ -293,10 +249,10 @@ struct options_t {
 static void usage()
 {
     cerr <<
-    "Usage: welle-cli [OPTION]" << endl <<
-    "   or: welle-cli -w <port> [OPTION]" << endl <<
+    "Usage: welle-pi [OPTION]" << endl <<
+    "   or: welle-pi -w <port> [OPTION]" << endl <<
     endl <<
-    "welle-cli is welle.io's command line interface." << endl <<
+    "welle-pi is welle.io's interface for Raspberry PI." << endl <<
     endl <<
     "Options:" << endl <<
     endl <<
@@ -324,10 +280,10 @@ static void usage()
     endl <<
     "Examples:" << endl <<
     endl <<
-    "welle-cli -c 10B -p GRRIF" << endl <<
+    "welle-pi -c 10B -p GRRIF" << endl <<
     "    Receive 'GRRIF' on channel '10B' using 'auto' driver, and play with ALSA." << endl <<
     endl <<
-    "welle-cli -c 10B -p GRRIF -F rtl_tcp,localhost:1234" << endl <<
+    "welle-pi -c 10B -p GRRIF -F rtl_tcp,localhost:1234" << endl <<
     "    Receive 'GRRIF' on channel '10B' using 'rtl_tcp' driver on localhost:1234," << endl <<
     "    and play with ALSA." << endl <<
     endl <<
@@ -348,7 +304,7 @@ static void copyright()
 
 static void version()
 {
-    cerr << "welle-cli " << VERSION << endl;
+    cerr << "welle-pi " << VERSION << endl;
 }
 
 options_t parse_cmdline(int argc, char **argv)
@@ -413,13 +369,9 @@ int main(int argc, char **argv)
     auto options = parse_cmdline(argc, argv);
     version();
 
-#if defined(HAVE_LIBLCD)
     LCDInfoScreen lcdIS;
 
     RadioInterface ri(&lcdIS);
-#else
-    RadioInterface ri;
-#endif
 
     Channels channels;
 
@@ -472,9 +424,7 @@ int main(int argc, char **argv)
     auto freq = channels.getFrequency(options.channel);
     in->setFrequency(freq);
     string service_to_tune = options.programme;
-#if defined(HAVE_LIBLCD)
     lcdIS.setProgramName("Starting radio");
-#endif
 
     RadioReceiver rx(ri, *in, options.rro);
 
@@ -493,12 +443,7 @@ int main(int argc, char **argv)
     // Wait an additional 2 seconds so that the receiver can complete the service list
     this_thread::sleep_for(chrono::seconds(2));
 
-#if defined(HAVE_ALSA)
-#if defined(HAVE_LIBLCD)
     AlsaProgrammeHandler ph(&lcdIS);
-#else
-    AlsaProgrammeHandler ph;
-#endif
     while (not service_to_tune.empty()) {
         cerr << "Service list" << endl;
         for (const auto& s : rx.getServiceList()) {
@@ -523,11 +468,9 @@ int main(int argc, char **argv)
                 if (rx.playSingleProgramme(ph, dumpFileName, s) == false) {
                     cerr << "Tune to " << service_to_tune << " failed" << endl;
                 }
-#if defined(HAVE_LIBLCD)
                 else {
                     lcdIS.setProgramName(s.serviceLabel.utf8_label());
                 }
-#endif
             }
         }
         if (not service_selected) {
@@ -541,9 +484,6 @@ int main(int argc, char **argv)
         }
         cerr << "**** Trying to tune to " << service_to_tune << endl;
     }
-#else
-    cerr << "Nothing to do, not ALSA support." << endl;
-#endif // defined(HAVE_ALSA)
 
     return 0;
 }
