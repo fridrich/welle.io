@@ -235,6 +235,7 @@ include_directories(
     ${LIBRTLSDR_INCLUDE_DIRS}
     ${SoapySDR_INCLUDE_DIRS}
     ${FLACPP_INCLUDE_DIRS}
+    ${LIBLCD_INCLUDE_DIRS}
 )
 
 set(backend_sources
