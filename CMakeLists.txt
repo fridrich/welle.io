@@ -17,6 +17,7 @@ set(CMAKE_CXX_STANDARD 14)
 
 option(BUILD_WELLE_IO    "Build Welle.io"                        ON  )
 option(BUILD_WELLE_CLI   "Build welle-cli"                       ON  )
+option(BUILD_WELLE_PI    "Build welle-pi"                        OFF )
 option(LIBWELLE_STATIC   "Build the welle library as static"     ON  )
 option(WITH_APP_BUNDLE   "Enable Application Bundle for macOS"   ON  )
 option(KISS_FFT          "KISS FFT instead of FFTW"              OFF )
@@ -81,6 +82,13 @@ if(BUILD_WELLE_CLI AND NOT ANDROID)
     find_package(FLACPP REQUIRED) # test if FLAC is installed on the system
     add_definitions(-DHAVE_FLAC)
     endif()
+endif()
+
+if (BUILD_WELLE_PI)
+    find_package(LibLCD REQUIRED)
+    add_definitions(-DHAVE_LIBLCD)
+    find_package(ALSA REQUIRED)
+    add_definitions(-DHAVE_ALSA)
 endif()
 
 find_package(Threads REQUIRED)
@@ -307,6 +315,12 @@ set(welle_cli_sources
     src/welle-cli/jsonconvert.cpp
     src/welle-cli/webprogrammehandler.cpp
     src/welle-cli/tests.cpp
+)
+
+set(welle_pi_sources
+    src/welle-pi/welle-pi.cpp
+    src/welle-cli/alsa-output.cpp
+    src/welle-cli/jsonconvert.cpp
 )
 
 set(input_sources
@@ -566,6 +580,22 @@ if(BUILD_WELLE_CLI AND NOT ANDROID)
         INSTALL (TARGETS ${cliExecutableName} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
         INSTALL (FILES src/welle-cli/doc/man/welle-cli.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1/)
     endif()
+endif()
+
+if (BUILD_WELLE_PI)
+    set(piExecutableName welle-pi)
+    add_executable (${piExecutableName} ${welle_pi_sources})
+    if(CMAKE_BUILD_TYPE MATCHES Debug)
+      SET_TARGET_PROPERTIES(${piExecutableName} PROPERTIES COMPILE_FLAGS "-O2 -fno-omit-frame-pointer -fsanitize=address")
+      SET_TARGET_PROPERTIES(${piExecutableName} PROPERTIES LINK_FLAGS "-fno-omit-frame-pointer -fsanitize=address")
+    endif(CMAKE_BUILD_TYPE MATCHES Debug)
+
+    target_link_libraries (${piExecutableName}
+        welle
+        ${ALSA_LIBRARIES}
+        ${LIBLCD_LIBRARIES}
+        Threads::Threads
+    )
 endif()
 
 configure_file(
