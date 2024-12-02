@@ -64,6 +64,7 @@ class LCDInfoScreen
 {
     public:
         LCDInfoScreen() {
+            m_display.backlightOn();
             m_thread = thread(&LCDInfoScreen::draw, this);
         }
         ~LCDInfoScreen() {
