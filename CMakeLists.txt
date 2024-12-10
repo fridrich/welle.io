@@ -4,7 +4,7 @@ project(Welle.Io LANGUAGES C CXX)
 
 file(READ "src/welle-gui/_current_version" VERSION_FILE)
 string(STRIP ${VERSION_FILE} CURRENT_VERSION)
-set(PROJECT_VERSION ${CURRENT_VERSION})
+string(REGEX REPLACE " .*$" "" PROJECT_VERSION ${CURRENT_VERSION})
 
 message ("Building project '${PROJECT_NAME}' version '${PROJECT_VERSION}'...")
 
