@@ -141,7 +141,13 @@ class LCDInfoScreen
 
 class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
     public:
-        AlsaProgrammeHandler(LCDInfoScreen* infoScreen) : lcdInfoScreen(infoScreen) {}
+        AlsaProgrammeHandler(LCDInfoScreen* infoScreen, const string& device) : lcdInfoScreen(infoScreen)
+        {
+            if (!device.empty())
+            {
+                pcm_device = device;
+            }
+        }
         virtual void onFrameErrors(int frameErrors) override { (void)frameErrors; }
         virtual void onNewAudio(vector<int16_t>&& audioData, int sampleRate, const string& mode) override
         {
@@ -153,7 +159,7 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
 
             if (!ao or reset_ao) {
                 cerr << "Create audio output rate " << rate << endl;
-                ao = make_unique<AlsaOutput>(2, rate);
+                ao = make_unique<AlsaOutput>(pcm_device.c_str(), 2, rate);
             }
 
             ao->playPCM(move(audioData));
@@ -180,6 +186,7 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
         bool stereo = true;
         unsigned int rate = 48000;
         LCDInfoScreen* lcdInfoScreen;
+        string pcm_device;
 };
 
 class RadioInterface : public RadioControllerInterface {
@@ -243,6 +250,7 @@ struct options_t {
     string programme = "GRRIF";
     string frontend = "auto";
     string frontend_args = "";
+    string pcm = PCM_DEVICE;
 
     RadioReceiverOptions rro;
 };
@@ -274,6 +282,9 @@ static void usage()
     "                  \"rtl_tcp,<HOST_IP>:<PORT>\"." << endl <<
     "    -s args       SoapySDR Driver arguments." << endl <<
     "    -A antenna    Set input antenna to ANT (for SoapySDR input only)." << endl <<
+    endl <<
+    "Output options:" << endl <<
+    "    -D            Select ALSA PCM device by name." << endl <<
     endl <<
     "Other options:" << endl <<
     "    -h            Display this help and exit." << endl <<
@@ -315,13 +326,16 @@ options_t parse_cmdline(int argc, char **argv)
     options.rro.decodeTII = false;
 
     int opt;
-    while ((opt = getopt(argc, argv, "A:c:F:g:hp:s:uv")) != -1) {
+    while ((opt = getopt(argc, argv, "A:c:D:F:g:hp:s:uv")) != -1) {
         switch (opt) {
             case 'A':
                 options.antenna = optarg;
                 break;
             case 'c':
                 options.channel = optarg;
+                break;
+            case 'D':
+                options.pcm = optarg;
                 break;
             case 'F':
                 fe_opt = optarg;
@@ -443,7 +457,7 @@ int main(int argc, char **argv)
     // Wait an additional 3 seconds so that the receiver can complete the service list
     this_thread::sleep_for(chrono::seconds(3));
 
-    AlsaProgrammeHandler ph(&lcdIS);
+    AlsaProgrammeHandler ph(&lcdIS, options.pcm);
     while (not service_to_tune.empty()) {
         cerr << "Service list" << endl;
         for (const auto& s : rx.getServiceList()) {
