@@ -118,12 +118,10 @@ void AlsaOutput::playPCM(std::vector<int16_t>&& pcm)
 
         snd_pcm_sframes_t ret = snd_pcm_writei(pcm_handle, data, frames_to_send);
 
-        if (ret == -EPIPE) {
-            snd_pcm_recover(pcm_handle, ret, 0);
-            fprintf(stderr, "XRUN\n");
-            break;
+        if (ret < 0) {
+            ret = snd_pcm_recover(pcm_handle, ret, 0);
         }
-        else if (ret < 0) {
+        if (ret < 0) {
             fprintf(stderr, "ERROR: Can't write to PCM device. %s\n",
                     snd_strerror(ret));
             break;
