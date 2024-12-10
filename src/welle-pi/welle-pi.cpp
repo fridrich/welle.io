@@ -35,14 +35,15 @@
 
 #include <algorithm>
 #include <condition_variable>
+#include <cstdio>
 #include <deque>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <thread>
 #include <set>
 #include <utility>
-#include <cstdio>
 #include <unistd.h>
 #ifdef HAVE_SOAPYSDR
 #  include "soapy_sdr.h"
@@ -144,7 +145,13 @@ class LCDInfoScreen
 
 class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
     public:
-        AlsaProgrammeHandler(LCDInfoScreen* infoScreen) : lcdInfoScreen(infoScreen) {}
+        AlsaProgrammeHandler(LCDInfoScreen* infoScreen, const string& device) : lcdInfoScreen(infoScreen)
+        {
+            if (!device.empty())
+            {
+                pcm_device = device;
+            }
+        }
         virtual void onFrameErrors(int frameErrors) override { (void)frameErrors; }
         virtual void onNewAudio(vector<int16_t>&& audioData, int sampleRate, const string& mode) override
         {
@@ -156,7 +163,7 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
 
             if (!ao or reset_ao) {
                 cerr << "Create audio output rate " << rate << endl;
-                ao = make_unique<AlsaOutput>(2, rate);
+                ao = make_unique<AlsaOutput>(pcm_device.c_str(), 2, rate);
             }
 
             ao->playPCM(move(audioData));
@@ -183,6 +190,7 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
         bool stereo = true;
         unsigned int rate = 48000;
         LCDInfoScreen* lcdInfoScreen;
+        string pcm_device;
 };
 
 class RadioInterface : public RadioControllerInterface {
@@ -246,6 +254,7 @@ struct options_t {
     string programme = "GRRIF";
     string frontend = "auto";
     string frontend_args = "";
+    string pcm = PCM_DEVICE;
 
     RadioReceiverOptions rro;
 };
@@ -262,7 +271,9 @@ static void usage()
     endl <<
     "Tuning:" << endl <<
     "    -c channel    Tune to <channel> (eg. 10B, 5A, LD...)." << endl <<
-    "    -p programme  Play <programme> with ALSA (text name of the radio: eg. GRIFF)." << endl <<
+    "    -p programme  Play <programme> with ALSA. The <programme> can be either" << endl <<
+    "                  * a station's label (eg. GRIFF) - or a part of it - or" << endl <<
+    "                  * a station's Service Id (eg. 0x4f57 or 20311)." << endl <<
     endl <<
     "Backend and input options:" << endl <<
     "    -u            Disable coarse corrector, for receivers who have a low " << endl <<
@@ -277,6 +288,9 @@ static void usage()
     "                  \"rtl_tcp,<HOST_IP>:<PORT>\"." << endl <<
     "    -s args       SoapySDR Driver arguments." << endl <<
     "    -A antenna    Set input antenna to ANT (for SoapySDR input only)." << endl <<
+    endl <<
+    "Output options:" << endl <<
+    "    -D            Select ALSA PCM device by name." << endl <<
     endl <<
     "Other options:" << endl <<
     "    -h            Display this help and exit." << endl <<
@@ -318,13 +332,16 @@ options_t parse_cmdline(int argc, char **argv)
     options.rro.decodeTII = false;
 
     int opt;
-    while ((opt = getopt(argc, argv, "A:c:F:g:hp:s:uv")) != -1) {
+    while ((opt = getopt(argc, argv, "A:c:D:F:g:hp:s:uv")) != -1) {
         switch (opt) {
             case 'A':
                 options.antenna = optarg;
                 break;
             case 'c':
                 options.channel = optarg;
+                break;
+            case 'D':
+                options.pcm = optarg;
                 break;
             case 'F':
                 fe_opt = optarg;
@@ -367,6 +384,19 @@ options_t parse_cmdline(int argc, char **argv)
 
     return options;
 }
+
+unsigned parse_service_to_tune(const string& name) {
+    try {
+        unsigned long id = stoul(name, nullptr, 0);
+        if (id <= numeric_limits<unsigned>::max())
+            return (unsigned)id;
+        else
+            return 0;
+    }
+    catch (...) {
+        return 0;
+    }
+};
 
 int main(int argc, char **argv)
 {
@@ -428,6 +458,7 @@ int main(int argc, char **argv)
     auto freq = channels.getFrequency(options.channel);
     in->setFrequency(freq);
     string service_to_tune = options.programme;
+    unsigned service_to_tune_idx = parse_service_to_tune(service_to_tune);
 
     RadioReceiver rx(ri, *in, options.rro);
 
@@ -446,7 +477,7 @@ int main(int argc, char **argv)
     // Wait an additional 3 seconds so that the receiver can complete the service list
     this_thread::sleep_for(chrono::seconds(3));
 
-    AlsaProgrammeHandler ph(&lcdIS);
+    AlsaProgrammeHandler ph(&lcdIS, options.pcm);
     while (not service_to_tune.empty()) {
         cerr << "Service list" << endl;
         for (const auto& s : rx.getServiceList()) {
@@ -465,7 +496,7 @@ int main(int argc, char **argv)
 
         bool service_selected = false;
         for (const auto& s : rx.getServiceList()) {
-            if (s.serviceLabel.utf8_label().find(service_to_tune) != string::npos) {
+                    if ((service_to_tune_idx && s.serviceId == service_to_tune_idx) || s.serviceLabel.utf8_label().find(service_to_tune) != string::npos) {
                 service_selected = true;
                 string dumpFileName;
                 if (rx.playSingleProgramme(ph, dumpFileName, s) == false) {
@@ -485,6 +516,7 @@ int main(int argc, char **argv)
         if (service_to_tune == ".") {
             break;
         }
+        service_to_tune_idx = parse_service_to_tune(service_to_tune);
         cerr << "**** Trying to tune to " << service_to_tune << endl;
     }
 
