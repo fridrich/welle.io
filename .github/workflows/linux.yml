@@ -10,14 +10,9 @@ on:
 jobs:
   qtbuild:
     name: Build with Qt
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: '6.8.0'
-          modules: 'qtcharts qtmultimedia qt5compat qtshadertools'
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -27,88 +22,54 @@ jobs:
         run: |
           echo "DATE=`date +%Y%m%d`" >> $GITHUB_ENV
           echo "GIT_HASH=`git rev-parse --short HEAD`" >> $GITHUB_ENV
-          #echo "QTDIR=$QT_ROOT_DIR" >> $GITHUB_ENV
           cat $GITHUB_ENV
 
       - name: Display environment variables
         run: env | sort
 
-      - name: Install build dependencies
+      - name: Install flatpak build dependencies
         run: |
             set -x
 
             # Install build dependencies
-            sudo apt-get -y install build-essential libfaad-dev libmpg123-dev libfftw3-dev \
-            librtlsdr-dev libusb-1.0-0-dev mesa-common-dev libglu1-mesa-dev libpulse-dev \
-            libsoapysdr-dev libairspy-dev libmp3lame-dev libflac++-dev libegl-dev
-     
-            # Install sharun dependencies
-            sudo apt install file binutils patchelf findutils grep sed coreutils strace
+            sudo apt-get -y install flatpak-builder appstream-compose
+            flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
-            # Install virtual graphic display to run welle.io without an display
-            sudo apt install xvfb
+            # For flatpak-builder-lint
+            flatpak install -y flathub org.flatpak.Builder
+
+      - name: Prepare flatpak build
+        run: |
+            # Add current build date into appdata.xml
+            APPDATA_DATE=`date +%Y-%m-%d`
+            sed -i 's/date="1970-01-01"/'date=\""$APPDATA_DATE"\"'/g' io.welle.welle_io.appdata.xml
+
+            # Add githash into appdata.xml
+            APPDATA_DATE_VERSION="2.7-unstable-$GIT_HASH"
+            sed -i 's/version="0.0.0"/'version=\""$APPDATA_DATE_VERSION"\"'/g' io.welle.welle_io.appdata.xml
+
+            # Check if file "io.welle.welle_io.appdata.xml" is valid
+            flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream io.welle.welle_io.appdata.xml
 
       - name: Build
         id: build
         run: |
-            mkdir build
-            cd build
-            qmake PREFIX=/usr ..
-            make -j4
-            cd ..
-            echo $PWD
+            # Create welle-gui Flatpak
+            flatpak-builder --force-clean --user --install-deps-from=flathub --repo=repo --install builddir io.welle.welle_io.yml
+            flatpak build-bundle repo welle-io.flatpak io.welle.welle_io --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
-      - name: Prepare welle-io AppImage
-        id: prepare_app_image
-        run: |
-            find build/
-            mkdir -p ./appdir/usr/share/applications
-            cp welle-io.desktop ./appdir/usr/share/applications
-            mkdir -p ./appdir/usr/bin
-            cp build/src/welle-gui/welle-io ./appdir/usr/bin
-            mkdir -p ./appdir/usr/lib
-            mkdir -p ./appdir/usr/share/icons/hicolor/256x256/apps/
-            cp src/welle-gui/icons/icon.png ./appdir/usr/share/icons/hicolor/256x256/apps/welle-io.png
-            find appdir/
-      
-      - name: Create AppImage
-        id: create_appimage
-        run: |
-          # Get appimagetool 
-          wget -c https://github.com/$(wget -q https://github.com/probonopd/go-appimage/releases/expanded_assets/continuous -O - | grep "appimagetool-.*-x86_64.AppImage" | head -n 1 | cut -d '"' -f 2)
-          #wget https://welle-io-nightlies.albrechtloh.de/appimagetool-843-x86_64.AppImage # just for testing
-          chmod +x appimagetool-*.AppImage
-
-          # Get lib4bin (sharun)
-          wget https://raw.githubusercontent.com/VHSgunzo/sharun/refs/heads/main/lib4bin -O ./lib4bin
-          chmod +x ./lib4bin
-
-          # Collect remaining libraries
-          ./appimagetool-*.AppImage -s deploy ./appdir/usr/share/applications/*.desktop # Bundle EVERYTHING
-
-          # Dummy run welle in a virtual display to collect graphic libraries with sharun
-          xvfb-run -- ./lib4bin -p -v -r -e ./appdir/usr/bin/welle-io
-          cp shared/lib/l* appdir/usr/lib/x86_64-linux-gnu/
-
-          find appdir/
-
-          # Create AppImage
-          VERSION=1.0 ./appimagetool-*.AppImage ./appdir # turn AppDir into AppImage
-
-          # Preapre publish
-          mkdir publish
-          mv welle.io-1.0-x86_64.AppImage publish/"$DATE"_"$GIT_HASH"_Linux_welle-io-x86_64.AppImage
+            # Prepare publish
+            mkdir publish
+            mv welle-io.flatpak publish/"$DATE"_"$GIT_HASH"_Linux_welle-io-x86_64.flatpak
         
-      - name: Archive artifacts (welle.io AppImage)
-        if: always() && steps.create_appimage.outcome == 'success'
+      - name: Archive artifacts (welle.io Flatpak)
         uses: actions/upload-artifact@v4
         with:
-          name: welle.io AppImage
-          path: publish/*welle-io-x86_64.AppImage
+          name: welle.io Flatpak
+          path: publish/*.flatpak
           if-no-files-found: error
 
       - name: Upload to nightly server
-        if: always() && steps.create_appimage.outcome == 'success'
         uses: dennisameling/ftp-upload-action@v1
         with:
           server: a2f24.netcup.net # welle-io-nightlies.albrechtloh.de is redirected to here
