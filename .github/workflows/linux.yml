@@ -10,7 +10,10 @@ on:
 jobs:
   qtbuild:
     name: Build with Qt
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
+    strategy:
+        matrix:
+            os: [ubuntu-24.04, ubuntu-24.04-arm]
 
     steps:
       - name: Checkout
@@ -32,6 +35,7 @@ jobs:
             set -x
 
             # Install build dependencies
+            sudo apt-get update
             sudo apt-get -y install flatpak-builder appstream-compose
             flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
@@ -42,31 +46,50 @@ jobs:
         run: |
             # Add current build date into appdata.xml
             APPDATA_DATE=`date +%Y-%m-%d`
-            sed -i 's/date="1970-01-01"/'date=\""$APPDATA_DATE"\"'/g' io.welle.welle_io.appdata.xml
+            sed -i 's/date="1970-01-01"/'date=\""$APPDATA_DATE"\"'/g' io.welle.welle-gui.appdata.xml
 
             # Add githash into appdata.xml
-            APPDATA_DATE_VERSION="2.7-unstable-$GIT_HASH"
-            sed -i 's/version="0.0.0"/'version=\""$APPDATA_DATE_VERSION"\"'/g' io.welle.welle_io.appdata.xml
+            #APPDATA_DATE_VERSION="2.7-unstable-$GIT_HASH"
+            APPDATA_DATE_VERSION="2.7-$GIT_HASH"
+            sed -i 's/version="0.0.0"/'version=\""$APPDATA_DATE_VERSION"\"'/g' io.welle.welle-gui.appdata.xml
 
-            # Check if file "io.welle.welle_io.appdata.xml" is valid
-            flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream io.welle.welle_io.appdata.xml
+            # Check if file "io.welle.welle-gui.appdata.xml" is valid
+            flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream io.welle.welle-gui.appdata.xml
 
       - name: Build
         id: build
         run: |
             # Create welle-gui Flatpak
-            flatpak-builder --force-clean --user --install-deps-from=flathub --repo=repo --install builddir io.welle.welle_io.yml
-            flatpak build-bundle repo welle-io.flatpak io.welle.welle_io --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
+            flatpak-builder --force-clean --sandbox --user --install-deps-from=flathub --repo=repo --install builddir io.welle.welle-gui.yml
+            flatpak build-bundle repo welle-io.flatpak io.welle.welle-gui --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
+            # Detect CPU
+            ARCH=$(uname -m)
+            if [ "$ARCH" = "x86_64" ]; then
+                ARCH_SUFFIX="x86_64"
+            elif [ "$ARCH" = "aarch64" ]; then
+                ARCH_SUFFIX="arm64"
+            else
+                echo "Unsupported architecture: $ARCH"
+                exit 1
+            fi
+            echo "ARCH_SUFFIX=$ARCH_SUFFIX" >> $GITHUB_ENV
 
             # Prepare publish
             mkdir publish
-            mv welle-io.flatpak publish/"$DATE"_"$GIT_HASH"_Linux_welle-io-x86_64.flatpak
+            mv welle-io.flatpak publish/"$DATE"_"$GIT_HASH"_Linux_welle_"$ARCH_SUFFIX".flatpak
+            #cp io.welle.welle-gui.appdata.xml publish/
+
+      - name: Check flathub eligibility
+        continue-on-error: true
+        run: |
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest io.welle.welle-gui.yml
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
         
       - name: Archive artifacts (welle.io Flatpak)
         uses: actions/upload-artifact@v4
         with:
-          name: welle.io Flatpak
-          path: publish/*.flatpak
+          name: welle.io Flatpak (${{ env.ARCH_SUFFIX }})
+          path: publish/*
           if-no-files-found: error
 
       - name: Upload to nightly server
