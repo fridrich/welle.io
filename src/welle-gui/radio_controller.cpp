@@ -305,6 +305,9 @@ void CRadioController::setService(uint32_t service, bool force)
         currentText = "";
         emit textChanged();
 
+        audioMode = "";
+        emit audioModeChanged(audioMode);
+
         emit motReseted();
     }
 }
@@ -889,9 +892,9 @@ void CRadioController::displayDateTime(const dab_date_time_t& dateTime)
     Date.setDate(dateTime.year, dateTime.month, dateTime.day);
     currentDateTime.setDate(Date);
 
-    int OffsetFromUtc = dateTime.hourOffset * 3600 +
-                        dateTime.minuteOffset * 60;
-    currentDateTime.setTimeZone(QTimeZone(OffsetFromUtc));
+    // int OffsetFromUtc = dateTime.hourOffset * 3600 +
+    //                     dateTime.minuteOffset * 60;
+    currentDateTime.setTimeZone(QTimeZone::UTC);
 
     emit dateTimeChanged(currentDateTime);
 }

@@ -42,6 +42,7 @@ ApplicationWindow {
     property bool isFullScreen: false
     property bool isLoaded: false
     property bool isStationNameInWindowTitle: false
+    property string knownEnsembleNamesSerialized
 
     StationListModel { id: stationList ; type: "all"}
     StationListModel { id: favoritsList ; type: "favorites"}
@@ -65,8 +66,6 @@ ApplicationWindow {
         else
             return Units.dp(500)
     }
-
-    Universal.accent: Universal.Cyan
 
     width: getWidth()
     height: getHeight()
@@ -110,6 +109,7 @@ ApplicationWindow {
         property alias favoritsListSerialize: favoritsList.serialized
         property alias stationListBoxIndex: stationListBox.currentIndex
         property alias volume: volumeSlider.value
+        property alias knownEnsembleNamesSerialized: mainWindow.knownEnsembleNamesSerialized
     }
 
     header: ToolBar {
@@ -433,9 +433,6 @@ ApplicationWindow {
                         ListElement { label: "Favorites"; trLabel: qsTr("Favorites"); trContext: "MainView" }
                     }
                     sizeToContents: true
-//                    background: Rectangle {
-//                        color: "white"
-//                    }
 
                     onCurrentIndexChanged: {
                         switch(currentIndex) {
@@ -515,7 +512,7 @@ ApplicationWindow {
             Button {
                 id: startStationScanButton
                 text: qsTr("Start station scan")
-                visible: stationChannelView.count ? false : true
+                visible: (stationChannelView.count || stationListBox.currentIndex != 0) ? false : true
                 onClicked:  {
                     radioController.startScan()
                 }
@@ -532,6 +529,8 @@ ApplicationWindow {
                     stationNameText: stationName.trim()
                     stationSIdValue: stationSId
                     channelNameText: channelName == "File" ? qsTr("File") : channelName
+                    availableChannelNamesText: channelName == "File" ? "" : availableChannelNames
+                    knownEnsembleNamesSerialized: mainWindow.knownEnsembleNamesSerialized
                     isFavorit: favorit
                     isExpert: isExpertView
                     onClicked: radioController.play(channelName, stationName, stationSId)
@@ -543,6 +542,10 @@ ApplicationWindow {
                             favoritsList.addStation(stationName, stationSId, channelName, true)
                         else
                             favoritsList.removeStation(stationSId, channelName);
+                    }
+                    onSetDefaultChannel: {
+                        stationList.setDefaultChannel(stationSId, newDefaultChannel)
+                        radioController.play(newDefaultChannel, stationName, stationSId)
                     }
                 }
 
@@ -557,6 +560,7 @@ ApplicationWindow {
                         var sidHex = radioController.lastChannel[0]
                         var index = stationChannelView.model.getIndexNext(parseInt(sidHex,16), channel)
                         stationChannelView.model.playAtIndex(index)
+                        stationChannelView.currentIndex = index
                     }
                 }
                 Shortcut {
@@ -568,6 +572,7 @@ ApplicationWindow {
                         var sidHex = radioController.lastChannel[0]
                         var index = stationChannelView.model.getIndexPrevious(parseInt(sidHex,16), channel)
                         stationChannelView.model.playAtIndex(index)
+                        stationChannelView.currentIndex = index
                     }
                 }
                 Shortcut {
@@ -894,6 +899,21 @@ ApplicationWindow {
         }
 
         function onNewStationNameReceived(station, sId, channel) {stationList.addStation(station, sId, channel, false)}
+
+        function onEnsembleChanged() {
+            var ensemble = radioController.ensemble.trim()
+            var channel = radioController.channel
+            if(ensemble != "") {
+                var knownEnsembleNames = {}
+                if(knownEnsembleNamesSerialized != "")
+                    knownEnsembleNames = JSON.parse(knownEnsembleNamesSerialized)
+
+                if (!(channel in knownEnsembleNames) || knownEnsembleNames[channel] !== ensemble) {
+                    knownEnsembleNames[channel] = ensemble; // Put new name into dict
+                    knownEnsembleNamesSerialized = JSON.stringify(knownEnsembleNames)
+                }
+            }
+        }
     }
 
     Connections {
