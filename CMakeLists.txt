@@ -24,10 +24,10 @@ option(AIRSPY            "Compile with Airspy support"           OFF )
 option(RTLSDR            "Compile with RTL-SDR support"          OFF )
 option(SOAPYSDR          "Compile with SoapySDR support"         OFF )
 option(FLAC              "Compile with flac support for streaming" OFF )
+option(FDK_AAC           "Use FDK-AAC instead of FAAD"           OFF )
 
 add_definitions(-Wall)
 add_definitions(-g)
-add_definitions(-DDABLIN_AAC_FAAD2)
 
 if(MINGW)
     add_definitions(-municode)
@@ -94,7 +94,21 @@ if(NOT ANDROID)
         set(fft_sources "")
         set(KISS_INCLUDE_DIRS "")
     endif()
-    find_package(Faad REQUIRED)
+    if (FDK_AAC)
+        find_package(FdkAac REQUIRED)
+        if (FDKAAC_FOUND)
+            add_definitions(-DDABLIN_AAC_FDKAAC)
+            set(AAC_LIBRARIES ${FDKAAC_LIBRARIES})
+            set(AAC_INCLUDE_DIRS ${FDKAAC_INCLUDE_DIRS})
+        endif()
+    else()
+        find_package(Faad REQUIRED)
+        if (FAAD_FOUND)
+            add_definitions(-DDABLIN_AAC_FAAD2)
+            set(AAC_LIBRARIES ${FAAD_LIBRARIES})
+            set(AAC_INCLUDE_DIRS ${FAAD_INCLUDE_DIRS})
+        endif()
+    endif()
     find_package(MPG123 REQUIRED)
 else()
     # For KISSFFT
@@ -141,6 +155,7 @@ else()
     )
 
     # For FAAD
+    add_definitions(-DDABLIN_AAC_FAAD2)
     add_definitions(-DHAVE_CONFIG_H)
     include_directories(
         src/libs/faad2
@@ -215,7 +230,7 @@ include_directories(
     src/libs/fec
     ${FFTW3F_INCLUDE_DIRS}
     ${KISS_INCLUDE_DIRS}
-    ${FAAD_INCLUDE_DIRS}
+    ${AAC_INCLUDE_DIRS}
     ${LIBRTLSDR_INCLUDE_DIRS}
     ${SoapySDR_INCLUDE_DIRS}
     ${FLACPP_INCLUDE_DIRS}
@@ -416,7 +431,7 @@ if(BUILD_WELLE_IO)
       ${LIBRTLSDR_LIBRARIES}
       ${LIBAIRSPY_LIBRARIES}
       ${FFTW3F_LIBRARIES}
-      ${FAAD_LIBRARIES}
+      ${AAC_LIBRARIES}
       ${SoapySDR_LIBRARIES}
       ${MPG123_LIBRARIES}
       Threads::Threads
@@ -477,7 +492,7 @@ if(BUILD_WELLE_CLI AND NOT ANDROID)
       ${LIBRTLSDR_LIBRARIES}
       ${LIBAIRSPY_LIBRARIES}
       ${FFTW3F_LIBRARIES}
-      ${FAAD_LIBRARIES}
+      ${AAC_LIBRARIES}
       ${ALSA_LIBRARIES}
       ${LAME_LIBRARIES}
       ${SoapySDR_LIBRARIES}
