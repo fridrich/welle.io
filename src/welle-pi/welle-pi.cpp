@@ -439,6 +439,12 @@ int main(int argc, char **argv)
     auto freq = channels.getFrequency(options.channel);
     in->setFrequency(freq);
     string service_to_tune = options.programme;
+    unsigned service_to_tune_idx = 0;
+    try {
+        service_to_tune_idx = (unsigned)stoi(service_to_tune, nullptr, 0);
+    }
+    catch (const invalid_argument&) {
+    }
 
     RadioReceiver rx(ri, *in, options.rro);
 
@@ -476,7 +482,7 @@ int main(int argc, char **argv)
 
         bool service_selected = false;
         for (const auto& s : rx.getServiceList()) {
-            if (s.serviceLabel.utf8_label().find(service_to_tune) != string::npos) {
+                    if ((service_to_tune_idx && s.serviceId == service_to_tune_idx) || s.serviceLabel.utf8_label().find(service_to_tune) != string::npos) {
                 service_selected = true;
                 string dumpFileName;
                 if (rx.playSingleProgramme(ph, dumpFileName, s) == false) {
