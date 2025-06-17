@@ -72,6 +72,13 @@ using namespace nlohmann;
 #if defined(HAVE_ALSA)
 class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
     public:
+        AlsaProgrammeHandler(const string& device)
+        {
+            if (!device.empty())
+            {
+                pcm_device = device;
+            }
+        }
         virtual void onFrameErrors(int frameErrors) override { (void)frameErrors; }
         virtual void onNewAudio(std::vector<int16_t>&& audioData, int sampleRate, const std::string& mode) override
         {
@@ -83,7 +90,7 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
 
             if (!ao or reset_ao) {
                 cerr << "Create audio output rate " << rate << endl;
-                ao = make_unique<AlsaOutput>(2, rate);
+                ao = make_unique<AlsaOutput>(pcm_device.c_str(), 2, rate);
             }
 
             ao->playPCM(move(audioData));
@@ -108,6 +115,7 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
         unique_ptr<AlsaOutput> ao;
         bool stereo = true;
         unsigned int rate = 48000;
+        string pcm_device;
 };
 #endif // defined(HAVE_ALSA)
 
@@ -288,6 +296,7 @@ struct options_t {
     int web_port = -1; // positive value means enable
     list<int> tests;
     string outputcodec = "";
+    string pcm = PCM_DEVICE;
 
     RadioReceiverOptions rro;
 };
@@ -341,6 +350,7 @@ static void usage()
     "    -A antenna    Set input antenna to ANT (for SoapySDR input only)." << endl <<
     "    -T            Disable TII decoding to reduce CPU usage." << endl <<
     "    -O            Output Codec for web streaming : mp3 (default), flac (lossless)" << endl <<
+    "    -o            Specify alsa PCM device by name" << endl <<
     endl <<
     "Other options:" << endl <<
     "    -t test_id    Run test <test_id>." << endl <<
@@ -409,7 +419,7 @@ options_t parse_cmdline(int argc, char **argv)
     options.rro.decodeTII = true;
 
     int opt;
-    while ((opt = getopt(argc, argv, "A:c:C:dDf:F:g:hp:O:Ps:Tt:uvw:")) != -1) {
+    while ((opt = getopt(argc, argv, "A:c:C:dDf:F:g:hp:O:o:Ps:Tt:uvw:")) != -1) {
         switch (opt) {
             case 'A':
                 options.antenna = optarg;
@@ -440,6 +450,9 @@ options_t parse_cmdline(int argc, char **argv)
                 break;
             case 'O':
                 options.outputcodec = optarg;
+                break;
+            case 'o':
+                options.pcm = optarg;
                 break;
             case 'P':
                 options.carousel_pad = true;
@@ -676,7 +689,7 @@ int main(int argc, char **argv)
         }
         else {
 #if defined(HAVE_ALSA)
-            AlsaProgrammeHandler ph;
+            AlsaProgrammeHandler ph(options.pcm);
             while (not service_to_tune.empty()) {
                 cerr << "Service list" << endl;
                 for (const auto& s : rx.getServiceList()) {
