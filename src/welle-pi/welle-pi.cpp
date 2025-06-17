@@ -267,7 +267,9 @@ static void usage()
     endl <<
     "Tuning:" << endl <<
     "    -c channel    Tune to <channel> (eg. 10B, 5A, LD...)." << endl <<
-    "    -p programme  Play <programme> with ALSA (text name of the radio: eg. GRIFF)." << endl <<
+    "    -p programme  Play <programme> with ALSA. The <programme> can be either" << endl <<
+    "                  * a station's label (eg. GRIFF) - or a part of it - or" << endl <<
+    "                  * a station's Service Id (eg. 0x4f57 or 20311)." << endl <<
     endl <<
     "Backend and input options:" << endl <<
     "    -u            Disable coarse corrector, for receivers who have a low " << endl <<
@@ -379,6 +381,15 @@ options_t parse_cmdline(int argc, char **argv)
     return options;
 }
 
+unsigned parse_service_to_tune(const string& name) {
+    try {
+        return (unsigned)stoi(name, nullptr, 0);
+    }
+    catch (const invalid_argument&) {
+        return 0;
+    }
+};
+
 int main(int argc, char **argv)
 {
     auto options = parse_cmdline(argc, argv);
@@ -439,12 +450,7 @@ int main(int argc, char **argv)
     auto freq = channels.getFrequency(options.channel);
     in->setFrequency(freq);
     string service_to_tune = options.programme;
-    unsigned service_to_tune_idx = 0;
-    try {
-        service_to_tune_idx = (unsigned)stoi(service_to_tune, nullptr, 0);
-    }
-    catch (const invalid_argument&) {
-    }
+    unsigned service_to_tune_idx = parse_service_to_tune(service_to_tune);
 
     RadioReceiver rx(ri, *in, options.rro);
 
@@ -502,6 +508,7 @@ int main(int argc, char **argv)
         if (service_to_tune == ".") {
             break;
         }
+        service_to_tune_idx = parse_service_to_tune(service_to_tune);
         cerr << "**** Trying to tune to " << service_to_tune << endl;
     }
 
