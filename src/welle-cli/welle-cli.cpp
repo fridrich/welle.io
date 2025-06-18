@@ -32,14 +32,15 @@
 
 #include <algorithm>
 #include <condition_variable>
+#include <cstdio>
 #include <deque>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <thread>
 #include <set>
 #include <utility>
-#include <cstdio>
 #include <unistd.h>
 #ifdef HAVE_SOAPYSDR
 #  include "soapy_sdr.h"
@@ -507,9 +508,13 @@ options_t parse_cmdline(int argc, char **argv)
 
 unsigned parse_service_to_tune(const string& name) {
     try {
-        return (unsigned)stoi(name, nullptr, 0);
+        unsigned long id = stoul(name, nullptr, 0);
+        if (id <= numeric_limits<unsigned>::max())
+            return (unsigned)id;
+        else
+            return 0;
     }
-    catch (const invalid_argument&) {
+    catch (...) {
         return 0;
     }
 };
