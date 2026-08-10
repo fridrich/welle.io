@@ -111,6 +111,9 @@ static const uint64_t SIGNAL_LOST_MS = 3000;
 /* Reception errors are counted and reported at most that often. */
 static const uint64_t ERROR_REPORT_MS = 10000;
 
+/* Delay between two attempts at opening the sound card. */
+static const uint64_t AO_RETRY_MS = 5000;
+
 class LCDInfoScreen
 {
     public:
@@ -253,8 +256,24 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
             rate = sampleRate;
 
             if (!ao or reset_ao) {
+                /* The sound card may be busy, for instance because another
+                 * instance is still shutting down. Do not hammer it. */
+                const uint64_t now = now_ms();
+                if (ao_failed and now - last_ao_attempt < AO_RETRY_MS) {
+                    return;
+                }
+                last_ao_attempt = now;
+
                 cerr << "Create audio output rate " << rate << endl;
                 ao = make_unique<AlsaOutput>(pcm_device.c_str(), 2, rate);
+                if (not ao->ok()) {
+                    cerr << "Could not open the audio output, trying again in "
+                        << AO_RETRY_MS / 1000 << " seconds" << endl;
+                    ao.reset();
+                    ao_failed = true;
+                    return;
+                }
+                ao_failed = false;
             }
 
             ao->playPCM(move(audioData));
@@ -338,6 +357,8 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
         int aac_errors = 0;
         mutex aomutex;
         unique_ptr<AlsaOutput> ao;
+        bool ao_failed = false;
+        uint64_t last_ao_attempt = 0;
         bool stereo = true;
         unsigned int rate = 48000;
         LCDInfoScreen* lcdInfoScreen;
