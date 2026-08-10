@@ -32,8 +32,12 @@
 
 #include <algorithm>
 #include <condition_variable>
+#include <cerrno>
+#include <csignal>
 #include <cstdio>
+#include <cstring>
 #include <deque>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -41,6 +45,9 @@
 #include <thread>
 #include <set>
 #include <utility>
+#include <fcntl.h>
+#include <poll.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #ifdef HAVE_SOAPYSDR
 #  include "soapy_sdr.h"
@@ -50,6 +57,7 @@
 #include <liblcd/liblcd.h>
 #include "backend/radio-receiver.h"
 #include "input/input_factory.h"
+#include "input/raw_file.h"
 #include "various/channels.h"
 #include "libs/json.hpp"
 
@@ -248,19 +256,154 @@ struct options_t {
     string antenna = "";
     int gain = -1;
     string channel = "10B";
+    string iqsource = "";
     string programme = "GRRIF";
     string frontend = "auto";
     string frontend_args = "";
     string pcm = PCM_DEVICE;
+    bool daemon = false;
+    string logfile = "";
+    string pidfile = "";
 
     RadioReceiverOptions rro;
+};
+
+/* Set by the signal handler, polled by all the loops that would otherwise
+ * run forever. */
+static volatile sig_atomic_t quit_requested = 0;
+
+static void handle_signal(int signum)
+{
+    (void)signum;
+    quit_requested = 1;
+}
+
+static void install_signal_handlers()
+{
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = handle_signal;
+    sigemptyset(&sa.sa_mask);
+    /* No SA_RESTART: a blocking read on stdin shall return so that the
+     * interactive loop notices the shutdown request. */
+    sigaction(SIGINT, &sa, nullptr);
+    sigaction(SIGTERM, &sa, nullptr);
+    sigaction(SIGHUP, &sa, nullptr);
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = SIG_IGN;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGPIPE, &sa, nullptr);
+}
+
+/* Redirect stdout and stderr either to <logfile> or, if none was given, to
+ * /dev/null. When <close_stdin> is set, stdin is connected to /dev/null too.
+ * Returns false on error. */
+static bool redirect_streams(const string& logfile, bool close_stdin)
+{
+    int devnull = open("/dev/null", O_RDWR);
+    if (devnull < 0) {
+        return false;
+    }
+
+    int out = devnull;
+    if (!logfile.empty()) {
+        out = open(logfile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (out < 0) {
+            cerr << "Could not open logfile " << logfile << ": " <<
+                strerror(errno) << endl;
+            close(devnull);
+            return false;
+        }
+    }
+
+    bool ok = dup2(out, STDOUT_FILENO) != -1 and
+              dup2(out, STDERR_FILENO) != -1;
+
+    if (ok and close_stdin) {
+        ok = dup2(devnull, STDIN_FILENO) != -1;
+    }
+
+    if (out != devnull) {
+        close(out);
+    }
+    if (devnull > STDERR_FILENO) {
+        close(devnull);
+    }
+
+    /* Once redirected to a file, cout would be fully buffered and the log
+     * would only show up much later. */
+    cout.setf(ios::unitbuf);
+
+    return ok;
+}
+
+/* Classic double fork so that the process ends up without a controlling
+ * terminal and is reparented to init. */
+static bool daemonise(const string& logfile)
+{
+    pid_t pid = fork();
+    if (pid < 0) {
+        cerr << "First fork failed: " << strerror(errno) << endl;
+        return false;
+    }
+    if (pid > 0) {
+        _exit(0);
+    }
+
+    if (setsid() < 0) {
+        cerr << "setsid failed: " << strerror(errno) << endl;
+        return false;
+    }
+
+    pid = fork();
+    if (pid < 0) {
+        cerr << "Second fork failed: " << strerror(errno) << endl;
+        return false;
+    }
+    if (pid > 0) {
+        _exit(0);
+    }
+
+    umask(022);
+    if (chdir("/") != 0) {
+        cerr << "Could not chdir to /: " << strerror(errno) << endl;
+    }
+
+    return redirect_streams(logfile, true);
+}
+
+/* Removes the pidfile again when welle-pi terminates. */
+class PidFile {
+    public:
+        PidFile(const string& path) : m_path(path) {
+            if (m_path.empty()) {
+                return;
+            }
+            ofstream f(m_path);
+            if (!f) {
+                cerr << "Could not write pidfile " << m_path << endl;
+                m_path.clear();
+                return;
+            }
+            f << getpid() << endl;
+        }
+        ~PidFile() {
+            if (!m_path.empty()) {
+                unlink(m_path.c_str());
+            }
+        }
+        PidFile(const PidFile&) = delete;
+        PidFile& operator=(const PidFile&) = delete;
+    private:
+        string m_path;
 };
 
 static void usage()
 {
     cerr <<
     "Usage: welle-pi [OPTION]" << endl <<
-    "   or: welle-pi -w <port> [OPTION]" << endl <<
+    "   or: welle-pi -b [OPTION]" << endl <<
     endl <<
     "welle-pi is welle.io's interface for Raspberry PI." << endl <<
     endl <<
@@ -273,6 +416,8 @@ static void usage()
     "                  * a station's Service Id (eg. 0x4f57 or 20311)." << endl <<
     endl <<
     "Backend and input options:" << endl <<
+    "    -f file       Read an IQ file <file> and play with ALSA." << endl <<
+    "                  IQ file format is u8, unless the file ends with 'FORMAT.iq'." << endl <<
     "    -u            Disable coarse corrector, for receivers who have a low " << endl <<
     "                  frequency offset." << endl <<
     "    -g gain       Set input gain to <gain> or -1 for auto gain." << endl <<
@@ -287,7 +432,18 @@ static void usage()
     "    -A antenna    Set input antenna to ANT (for SoapySDR input only)." << endl <<
     endl <<
     "Output options:" << endl <<
-    "    -D            Select ALSA PCM device by name." << endl <<
+    "    -o device     Specify alsa PCM device by name." << endl <<
+    endl <<
+    "Daemon options:" << endl <<
+    "    -b            Detach from the terminal and run in the background." << endl <<
+    "                  In that mode welle-pi does not read commands from" << endl <<
+    "                  standard input any more, it keeps playing the selected" << endl <<
+    "                  programme until it receives SIGINT, SIGTERM or SIGHUP." << endl <<
+    "    -l logfile    Append standard output and standard error to <logfile>." << endl <<
+    "                  Without this option they are sent to /dev/null when" << endl <<
+    "                  running as a daemon." << endl <<
+    "    -k pidfile    Write the process id to <pidfile> and remove that file" << endl <<
+    "                  again on exit." << endl <<
     endl <<
     "Other options:" << endl <<
     "    -h            Display this help and exit." << endl <<
@@ -298,9 +454,15 @@ static void usage()
     "welle-pi -c 10B -p GRRIF" << endl <<
     "    Receive 'GRRIF' on channel '10B' using 'auto' driver, and play with ALSA." << endl <<
     endl <<
+    "welle-pi -f ./ofdm.iq -p GRRIF" << endl <<
+    "    Read IQ file './ofdm.iq' (in u8 format) and play programme 'GRIFF' with ALSA." << endl <<
+    endl <<
     "welle-pi -c 10B -p GRRIF -F rtl_tcp,localhost:1234" << endl <<
     "    Receive 'GRRIF' on channel '10B' using 'rtl_tcp' driver on localhost:1234," << endl <<
     "    and play with ALSA." << endl <<
+    endl <<
+    "welle-pi -b -l /var/log/welle-pi.log -k /run/welle-pi.pid -c 10B -p GRRIF" << endl <<
+    "    Same as above, but in the background, logging to a file." << endl <<
     endl <<
     "Report bugs to: <https://github.com/AlbrechtL/welle.io/issues>" << endl;
 }
@@ -329,22 +491,34 @@ options_t parse_cmdline(int argc, char **argv)
     options.rro.decodeTII = false;
 
     int opt;
-    while ((opt = getopt(argc, argv, "A:c:D:F:g:hp:s:uv")) != -1) {
+    while ((opt = getopt(argc, argv, "A:bc:f:F:g:hk:l:o:p:s:uv")) != -1) {
         switch (opt) {
             case 'A':
                 options.antenna = optarg;
                 break;
+            case 'b':
+                options.daemon = true;
+                break;
             case 'c':
                 options.channel = optarg;
                 break;
-            case 'D':
-                options.pcm = optarg;
+            case 'f':
+                options.iqsource = optarg;
                 break;
             case 'F':
                 fe_opt = optarg;
                 break;
             case 'g':
                 options.gain = atoi(optarg);
+                break;
+            case 'k':
+                options.pidfile = optarg;
+                break;
+            case 'l':
+                options.logfile = optarg;
+                break;
+            case 'o':
+                options.pcm = optarg;
                 break;
             case 'p':
                 options.programme = optarg;
@@ -395,10 +569,131 @@ unsigned parse_service_to_tune(const string& name) {
     }
 };
 
+/* A sleep that returns early when a shutdown was requested. */
+static void interruptible_sleep(int seconds)
+{
+    for (int i = 0; i < seconds and not quit_requested; i++) {
+        this_thread::sleep_for(chrono::seconds(1));
+    }
+}
+
+enum class input_result_t { line, eof, quit };
+
+/* Read one line from stdin, without blocking forever: the shutdown request
+ * has to be honoured even if the user does not type anything. */
+static input_result_t read_service_name(string& service_name)
+{
+    while (not quit_requested) {
+        struct pollfd pfd;
+        pfd.fd = STDIN_FILENO;
+        pfd.events = POLLIN;
+
+        int r = poll(&pfd, 1, 500);
+        if (r < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return input_result_t::eof;
+        }
+        if (r == 0) {
+            continue;
+        }
+
+        if (not getline(cin, service_name)) {
+            return input_result_t::eof;
+        }
+
+        const auto first = service_name.find_first_not_of(" \t\r\n");
+        if (first == string::npos) {
+            service_name.clear();
+        }
+        else {
+            const auto last = service_name.find_last_not_of(" \t\r\n");
+            service_name = service_name.substr(first, last - first + 1);
+        }
+        return input_result_t::line;
+    }
+
+    return input_result_t::quit;
+}
+
+static void print_service_list(RadioReceiver& rx)
+{
+    cerr << "Service list" << endl;
+    for (const auto& s : rx.getServiceList()) {
+        cerr << "  [0x" << hex << s.serviceId << dec << "] " <<
+            s.serviceLabel.utf8_label() << " ";
+        for (const auto& sc : rx.getComponents(s)) {
+            cerr << " [component "  << sc.componentNr <<
+                " ASCTy: " <<
+                (sc.audioType() == AudioServiceComponentType::DAB ? "DAB" :
+                 sc.audioType() == AudioServiceComponentType::DABPlus ? "DAB+" : "unknown") << " ]";
+            const auto& sub = rx.getSubchannel(sc);
+            cerr << " [subch " << sub.subChId << " bitrate:" << sub.bitrate() << " at SAd:" << sub.startAddr << "]";
+        }
+        cerr << endl;
+    }
+}
+
+/* Returns true if we are playing the requested service. */
+static bool tune_to_service(RadioReceiver& rx, AlsaProgrammeHandler& ph,
+        LCDInfoScreen& lcdIS, const string& service_to_tune,
+        unsigned service_to_tune_idx)
+{
+    bool service_selected = false;
+
+    for (const auto& s : rx.getServiceList()) {
+        if ((service_to_tune_idx && s.serviceId == service_to_tune_idx) ||
+                s.serviceLabel.utf8_label().find(service_to_tune) != string::npos) {
+            string dumpFileName;
+            if (rx.playSingleProgramme(ph, dumpFileName, s) == false) {
+                cerr << "Tune to " << service_to_tune << " failed" << endl;
+            }
+            else {
+                service_selected = true;
+                lcdIS.setProgramName(s.serviceLabel.utf8_label());
+            }
+        }
+    }
+
+    if (not service_selected) {
+        cerr << "Could not tune to " << service_to_tune << endl;
+    }
+
+    return service_selected;
+}
+
 int main(int argc, char **argv)
 {
     auto options = parse_cmdline(argc, argv);
+
+    if (options.daemon) {
+        if (not daemonise(options.logfile)) {
+            cerr << "Could not run as a daemon" << endl;
+            return 1;
+        }
+    }
+    else if (not options.logfile.empty()) {
+        if (not redirect_streams(options.logfile, false)) {
+            cerr << "Could not redirect the output to " << options.logfile << endl;
+            return 1;
+        }
+    }
+
+    install_signal_handlers();
+
+    /* Without a terminal there is nobody who could enter a programme name,
+     * so welle-pi keeps playing until it is asked to terminate. */
+    const bool interactive = isatty(STDIN_FILENO);
+
+    PidFile pidfile(options.pidfile);
+
     version();
+
+    if (not interactive and options.programme.empty()) {
+        cerr << "No programme given and no terminal to ask for one" << endl;
+        return 1;
+    }
 
     LCDInfoScreen lcdIS;
 
@@ -408,11 +703,20 @@ int main(int argc, char **argv)
 
     unique_ptr<CVirtualInput> in = nullptr;
 
-    in.reset(CInputFactory::GetDevice(ri, options.frontend));
+    if (options.iqsource.empty()) {
+        in.reset(CInputFactory::GetDevice(ri, options.frontend));
 
-    if (not in) {
-        cerr << "Could not start device" << endl;
-        return 1;
+        if (not in) {
+            cerr << "Could not start device" << endl;
+            return 1;
+        }
+    }
+    else {
+        // Throttle the file input and rewind at the end, so that welle-pi
+        // plays the recording like a real receiver would.
+        auto in_file = make_unique<CRAWFile>(ri, true, true);
+        in_file->setFileName(options.iqsource, "auto");
+        in = move(in_file);
     }
 
     if (options.gain == -1) {
@@ -462,60 +766,73 @@ int main(int argc, char **argv)
     rx.restart(false);
 
     cerr << "Wait for sync" << endl;
-    while (not ri.synced) {
+    while (not ri.synced and not quit_requested) {
         this_thread::sleep_for(chrono::seconds(1));
     }
 
     cerr << "Wait for service list" << endl;
-    while (rx.getServiceList().empty()) {
+    while (rx.getServiceList().empty() and not quit_requested) {
          this_thread::sleep_for(chrono::seconds(1));
     }
 
     // Wait an additional 3 seconds so that the receiver can complete the service list
-    this_thread::sleep_for(chrono::seconds(3));
+    interruptible_sleep(3);
 
     AlsaProgrammeHandler ph(&lcdIS, options.pcm);
-    while (not service_to_tune.empty()) {
-        cerr << "Service list" << endl;
-        for (const auto& s : rx.getServiceList()) {
-            cerr << "  [0x" << hex << s.serviceId << dec << "] " <<
-                s.serviceLabel.utf8_label() << " ";
-            for (const auto& sc : rx.getComponents(s)) {
-                cerr << " [component "  << sc.componentNr <<
-                    " ASCTy: " <<
-                    (sc.audioType() == AudioServiceComponentType::DAB ? "DAB" :
-                     sc.audioType() == AudioServiceComponentType::DABPlus ? "DAB+" : "unknown") << " ]";
-                const auto& sub = rx.getSubchannel(sc);
-                cerr << " [subch " << sub.subChId << " bitrate:" << sub.bitrate() << " at SAd:" << sub.startAddr << "]";
-            }
-            cerr << endl;
-        }
 
-        bool service_selected = false;
-        for (const auto& s : rx.getServiceList()) {
-                    if ((service_to_tune_idx && s.serviceId == service_to_tune_idx) || s.serviceLabel.utf8_label().find(service_to_tune) != string::npos) {
-                service_selected = true;
-                string dumpFileName;
-                if (rx.playSingleProgramme(ph, dumpFileName, s) == false) {
-                    cerr << "Tune to " << service_to_tune << " failed" << endl;
-                }
-                else {
-                    lcdIS.setProgramName(s.serviceLabel.utf8_label());
-                }
-            }
-        }
-        if (not service_selected) {
-            cerr << "Could not tune to " << service_to_tune << endl;
-        }
-        cerr << "**** Please enter programme name. Enter '.' to quit." << endl;
-
-        cin >> service_to_tune;
-        if (service_to_tune == ".") {
-            break;
-        }
-        service_to_tune_idx = parse_service_to_tune(service_to_tune);
-        cerr << "**** Trying to tune to " << service_to_tune << endl;
+    bool tuned = false;
+    if (not quit_requested and not service_to_tune.empty()) {
+        print_service_list(rx);
+        tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
     }
+
+    if (not interactive) {
+        /* Daemon mode: play until we are asked to stop. As long as we did
+         * not manage to tune, keep trying: the ensemble might not have been
+         * completely decoded yet, or the service may come back later. Retry
+         * less and less often so that the log does not fill up. */
+        int retry_delay = 5;
+        while (not quit_requested) {
+            if (tuned) {
+                interruptible_sleep(5);
+                continue;
+            }
+
+            interruptible_sleep(retry_delay);
+            if (quit_requested) {
+                break;
+            }
+
+            print_service_list(rx);
+            tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
+            if (not tuned) {
+                retry_delay = min(60, 2 * retry_delay);
+            }
+        }
+    }
+    else {
+        while (not quit_requested) {
+            cerr << "**** Please enter programme name. Enter '.' to quit." << endl;
+
+            string input;
+            const auto result = read_service_name(input);
+            if (result != input_result_t::line or input == ".") {
+                break;
+            }
+            if (input.empty()) {
+                continue;
+            }
+
+            service_to_tune = input;
+            service_to_tune_idx = parse_service_to_tune(service_to_tune);
+            cerr << "**** Trying to tune to " << service_to_tune << endl;
+
+            print_service_list(rx);
+            tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
+        }
+    }
+
+    cerr << "Shutting down" << endl;
 
     return 0;
 }

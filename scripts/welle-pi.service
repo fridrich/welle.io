@@ -1,0 +1,17 @@
+[Unit]
+Description=welle-pi DAB/DAB+ receiver
+After=sound.target
+
+[Service]
+# systemd supervises welle-pi best when it stays in the foreground. welle-pi
+# notices that it has no terminal and keeps playing until it is stopped.
+ExecStart=/usr/local/bin/welle-pi -c 10B -p GRRIF
+# Alternatively, to let welle-pi detach itself:
+#Type=forking
+#PIDFile=/run/welle-pi.pid
+#ExecStart=/usr/local/bin/welle-pi -b -k /run/welle-pi.pid -c 10B -p GRRIF
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
