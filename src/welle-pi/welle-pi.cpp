@@ -31,6 +31,7 @@
  */
 
 #include <algorithm>
+#include <atomic>
 #include <condition_variable>
 #include <cerrno>
 #include <csignal>
@@ -68,6 +69,20 @@
 #endif
 
 using namespace std;
+
+/* Set by the signal handler, polled by all the loops that would otherwise
+ * run forever. */
+static volatile sig_atomic_t quit_requested = 0;
+
+/* The input device failed and the receiver stopped. welle-pi cannot do
+ * anything about it, it has to terminate with an error so that whoever
+ * started it can restart it. */
+static atomic<bool> input_failure(false);
+
+static bool stop_requested()
+{
+    return quit_requested or input_failure;
+}
 
 class LCDInfoScreen
 {
@@ -247,6 +262,12 @@ class RadioInterface : public RadioControllerInterface {
 
         virtual void onTIIMeasurement(tii_measurement_t&& m) override { (void)m; }
 
+        virtual void onInputFailure(void) override
+        {
+            cerr << "Input device failure, terminating" << endl;
+            input_failure = true;
+        }
+
         bool synced = false;
         LCDInfoScreen* lcdInfoScreen;
 };
@@ -267,10 +288,6 @@ struct options_t {
 
     RadioReceiverOptions rro;
 };
-
-/* Set by the signal handler, polled by all the loops that would otherwise
- * run forever. */
-static volatile sig_atomic_t quit_requested = 0;
 
 static void handle_signal(int signum)
 {
@@ -572,7 +589,7 @@ unsigned parse_service_to_tune(const string& name) {
 /* A sleep that returns early when a shutdown was requested. */
 static void interruptible_sleep(int seconds)
 {
-    for (int i = 0; i < seconds and not quit_requested; i++) {
+    for (int i = 0; i < seconds and not stop_requested(); i++) {
         this_thread::sleep_for(chrono::seconds(1));
     }
 }
@@ -583,7 +600,7 @@ enum class input_result_t { line, eof, quit };
  * has to be honoured even if the user does not type anything. */
 static input_result_t read_service_name(string& service_name)
 {
-    while (not quit_requested) {
+    while (not stop_requested()) {
         struct pollfd pfd;
         pfd.fd = STDIN_FILENO;
         pfd.events = POLLIN;
@@ -766,12 +783,12 @@ int main(int argc, char **argv)
     rx.restart(false);
 
     cerr << "Wait for sync" << endl;
-    while (not ri.synced and not quit_requested) {
+    while (not ri.synced and not stop_requested()) {
         this_thread::sleep_for(chrono::seconds(1));
     }
 
     cerr << "Wait for service list" << endl;
-    while (rx.getServiceList().empty() and not quit_requested) {
+    while (rx.getServiceList().empty() and not stop_requested()) {
          this_thread::sleep_for(chrono::seconds(1));
     }
 
@@ -781,7 +798,7 @@ int main(int argc, char **argv)
     AlsaProgrammeHandler ph(&lcdIS, options.pcm);
 
     bool tuned = false;
-    if (not quit_requested and not service_to_tune.empty()) {
+    if (not stop_requested() and not service_to_tune.empty()) {
         print_service_list(rx);
         tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
     }
@@ -792,14 +809,14 @@ int main(int argc, char **argv)
          * completely decoded yet, or the service may come back later. Retry
          * less and less often so that the log does not fill up. */
         int retry_delay = 5;
-        while (not quit_requested) {
+        while (not stop_requested()) {
             if (tuned) {
                 interruptible_sleep(5);
                 continue;
             }
 
             interruptible_sleep(retry_delay);
-            if (quit_requested) {
+            if (stop_requested()) {
                 break;
             }
 
@@ -811,7 +828,7 @@ int main(int argc, char **argv)
         }
     }
     else {
-        while (not quit_requested) {
+        while (not stop_requested()) {
             cerr << "**** Please enter programme name. Enter '.' to quit." << endl;
 
             string input;
@@ -834,5 +851,5 @@ int main(int argc, char **argv)
 
     cerr << "Shutting down" << endl;
 
-    return 0;
+    return input_failure ? 1 : 0;
 }
