@@ -36,6 +36,7 @@
 #include <cerrno>
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <fstream>
@@ -113,6 +114,11 @@ static const uint64_t ERROR_REPORT_MS = 10000;
 
 /* Delay between two attempts at opening the sound card. */
 static const uint64_t AO_RETRY_MS = 5000;
+
+/* The frequency correction is reported at most that often, and only when it
+ * moved by at least that much. */
+static const uint64_t CORRECTOR_REPORT_MS = 60000;
+static const int CORRECTOR_REPORT_HZ = 100;
 
 class LCDInfoScreen
 {
@@ -369,7 +375,24 @@ class RadioInterface : public RadioControllerInterface {
     public:
         RadioInterface(LCDInfoScreen* infoScreen) : lcdInfoScreen(infoScreen) {}
         virtual void onSNR(float /*snr*/) override { }
-        virtual void onFrequencyCorrectorChange(int /*fine*/, int /*coarse*/) override { }
+        /* Called for every frame. The drift is worth knowing, it tells how far
+         * the tuner is off and how much correction range is left, but it has
+         * to be reported sparingly. */
+        virtual void onFrequencyCorrectorChange(int fine, int coarse) override
+        {
+            const int correction = fine + coarse;
+            const uint64_t now = now_ms();
+            if (now - last_corrector_report < CORRECTOR_REPORT_MS or
+                    abs(correction - reported_correction) < CORRECTOR_REPORT_HZ) {
+                return;
+            }
+            last_corrector_report = now;
+            reported_correction = correction;
+
+            cerr << "Frequency correction " << correction << " Hz (coarse " <<
+                coarse << " Hz, fine " << fine << " Hz)" << endl;
+        }
+
         virtual void onSyncChange(char isSync) override
         {
             synced = isSync;
@@ -451,6 +474,10 @@ class RadioInterface : public RadioControllerInterface {
     private:
         /* Written by the OFDM processor thread, read by the main thread. */
         atomic<uint64_t> last_sync{now_ms()};
+
+        /* Only used by the OFDM processor thread. */
+        uint64_t last_corrector_report = 0;
+        int reported_correction = 0;
 };
 
 struct options_t {
