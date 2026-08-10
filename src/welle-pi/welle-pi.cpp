@@ -56,6 +56,7 @@
 #endif
 #include "rtl_tcp.h"
 #include "welle-cli/alsa-output.h"
+#include "backend/ensemble_wait.h"
 #include <liblcd/liblcd.h>
 #include "backend/radio-receiver.h"
 #include "input/input_factory.h"
@@ -1003,11 +1004,10 @@ int main(int argc, char **argv)
 
     cerr << "Wait for service list" << endl;
     while (rx.getServiceList().empty() and not stop_requested()) {
-         this_thread::sleep_for(chrono::seconds(1));
+         this_thread::sleep_for(chrono::milliseconds(250));
     }
 
-    // Wait an additional 3 seconds so that the receiver can complete the service list
-    interruptible_sleep(3);
+    wait_for_complete_ensemble(rx, stop_requested);
 
     AlsaProgrammeHandler ph(&lcdIS, options.pcm);
 
