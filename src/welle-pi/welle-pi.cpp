@@ -84,6 +84,12 @@ static bool stop_requested()
     return quit_requested or input_failure;
 }
 
+/* The ensemble was reconfigured, or the IQ file was rewound. The subchannel
+ * we are decoding may have moved, so the programme has to be selected again.
+ * This is set from the FIB processor thread and acted upon by the main
+ * thread. */
+static atomic<bool> retune_requested(false);
+
 class LCDInfoScreen
 {
     public:
@@ -266,6 +272,11 @@ class RadioInterface : public RadioControllerInterface {
         {
             cerr << "Input device failure, terminating" << endl;
             input_failure = true;
+        }
+
+        virtual void onRestartService(void) override
+        {
+            retune_requested = true;
         }
 
         bool synced = false;
@@ -594,13 +605,17 @@ static void interruptible_sleep(int seconds)
     }
 }
 
-enum class input_result_t { line, eof, quit };
+enum class input_result_t { line, eof, quit, retune };
 
-/* Read one line from stdin, without blocking forever: the shutdown request
- * has to be honoured even if the user does not type anything. */
+/* Read one line from stdin, without blocking forever: a shutdown or a retune
+ * request has to be honoured even if the user does not type anything. */
 static input_result_t read_service_name(string& service_name)
 {
     while (not stop_requested()) {
+        if (retune_requested.exchange(false)) {
+            return input_result_t::retune;
+        }
+
         struct pollfd pfd;
         pfd.fd = STDIN_FILENO;
         pfd.events = POLLIN;
@@ -798,6 +813,7 @@ int main(int argc, char **argv)
     AlsaProgrammeHandler ph(&lcdIS, options.pcm);
 
     bool tuned = false;
+    retune_requested = false;
     if (not stop_requested() and not service_to_tune.empty()) {
         print_service_list(rx);
         tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
@@ -810,8 +826,15 @@ int main(int argc, char **argv)
          * less and less often so that the log does not fill up. */
         int retry_delay = 5;
         while (not stop_requested()) {
+            if (retune_requested.exchange(false)) {
+                cerr << "Ensemble configuration changed, tuning again" << endl;
+                tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
+                retry_delay = 5;
+                continue;
+            }
+
             if (tuned) {
-                interruptible_sleep(5);
+                interruptible_sleep(1);
                 continue;
             }
 
@@ -833,6 +856,11 @@ int main(int argc, char **argv)
 
             string input;
             const auto result = read_service_name(input);
+            if (result == input_result_t::retune) {
+                cerr << "Ensemble configuration changed, tuning again" << endl;
+                tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
+                continue;
+            }
             if (result != input_result_t::line or input == ".") {
                 break;
             }
