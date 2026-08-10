@@ -105,6 +105,12 @@ static const uint64_t AUDIO_TIMEOUT_MS = 30000;
  * search for the frequency offset again. */
 static const uint64_t SYNC_TIMEOUT_MS = 120000;
 
+/* Do not tell the listener about dropouts shorter than that. */
+static const uint64_t SIGNAL_LOST_MS = 3000;
+
+/* Reception errors are counted and reported at most that often. */
+static const uint64_t ERROR_REPORT_MS = 10000;
+
 class LCDInfoScreen
 {
     public:
@@ -114,74 +120,111 @@ class LCDInfoScreen
         }
         ~LCDInfoScreen() {
             m_exit = true;
-            setProgramName("");
-            sleep(2);
-            m_display.clear();
+            /* Wake the drawing thread up, it may be scrolling a long text. */
+            m_display.interrupt();
             if (m_thread.joinable())
                 m_thread.join();
-            m_changed = true;
+            m_display.clear();
         }
         void setChannelName(const string& channel_name) {
+            lock_guard<mutex> lock(m_mutex);
             if (m_channelName.compare(channel_name) != 0) {
                 m_channelName = channel_name;
                 m_changed = true;
             }
         }
         void setProgramName(const string& program_name) {
-            if (m_programName.compare(program_name) != 0) {
+            {
+                lock_guard<mutex> lock(m_mutex);
+                if (m_programName.compare(program_name) == 0) {
+                    return;
+                }
                 m_programName = program_name;
                 m_changed = true;
                 m_dlsQueue.clear();
                 m_dls.clear();
-                m_display.interrupt();
             }
-
+            m_display.interrupt();
         }
         void setDLS(const string& dls) {
+            lock_guard<mutex> lock(m_mutex);
             if (m_dlsQueue.empty())
                 m_changed = true;
             if (m_dlsQueue.empty() || m_dlsQueue.back().compare(dls) != 0) {
                 m_dlsQueue.push_back(dls);
             }
         }
+        /* Tell the listener that the programme they see on the display is not
+         * being received any more. Short dropouts are not worth reporting, the
+         * message only appears once the signal stayed away for a while. */
+        void setSignalPresent(bool present) {
+            if (m_signalPresent.exchange(present) != present) {
+                m_signalChanged = now_ms();
+            }
+        }
     private:
+        bool signalLost() const {
+            return not m_signalPresent and
+                now_ms() - m_signalChanged > SIGNAL_LOST_MS;
+        }
         void draw() {
             while (!m_exit) {
                 if (m_changed) {
                     m_changed = false;
+                    string programName, channelName;
+                    {
+                        lock_guard<mutex> lock(m_mutex);
+                        programName = m_programName;
+                        channelName = m_channelName;
+                    }
                     m_display.clear();
                     m_display.gotoXY(0,0);
-                    m_display.write(m_programName.c_str());
+                    m_display.write(programName.c_str());
                     m_display.killEOL();
                     m_display.gotoXY(0,1);
-                    m_display.write(m_channelName.c_str());
+                    m_display.write(channelName.c_str());
                     m_display.killEOL();
                     m_display.gotoXY(0,0);
                     m_display.gotoLastLine();
                     while (!m_changed && !m_exit) {
-                        if (!m_dlsQueue.empty()) {
-                            m_dls = m_dlsQueue.front();
-                            m_dlsQueue.pop_front();
+                        const bool lost = signalLost();
+                        string text;
+                        bool queueEmpty;
+                        {
+                            lock_guard<mutex> lock(m_mutex);
+                            if (!m_dlsQueue.empty()) {
+                                m_dls = m_dlsQueue.front();
+                                m_dlsQueue.pop_front();
+                            }
+                            queueEmpty = m_dlsQueue.empty();
+                            text = lost ? NO_SIGNAL_TEXT : m_dls;
                         }
-                        if (m_display.scroll(m_dls.c_str())) {
+                        if (m_display.scroll(text.c_str())) {
                         }
                         else {
-                            while(!m_changed && !m_exit && m_dlsQueue.empty()) {
+                            while(!m_changed && !m_exit && queueEmpty &&
+                                    lost == signalLost()) {
                                 sleep(1);
+                                lock_guard<mutex> lock(m_mutex);
+                                queueEmpty = m_dlsQueue.empty();
                             }
                         }
                     }
                 }
             }
         }
+        static constexpr const char* NO_SIGNAL_TEXT = "-- no signal --";
         liblcd::LCDDisplay m_display;
+        mutex m_mutex;
         string m_channelName;
         string m_programName;
         string m_dls;
         deque<string> m_dlsQueue;
         thread m_thread;
-        bool m_changed = true;
-        bool m_exit = false;
+        atomic<bool> m_changed{true};
+        atomic<bool> m_exit{false};
+        atomic<bool> m_signalPresent{true};
+        atomic<uint64_t> m_signalChanged{now_ms()};
 };
 
 class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
@@ -193,7 +236,13 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
                 pcm_device = device;
             }
         }
-        virtual void onFrameErrors(int frameErrors) override { (void)frameErrors; }
+        virtual void onFrameErrors(int frameErrors) override
+        {
+            lock_guard<mutex> lock(errmutex);
+            frame_errors += frameErrors;
+            report_errors();
+        }
+
         virtual void onNewAudio(vector<int16_t>&& audioData, int sampleRate, const string& mode) override
         {
             (void)mode;
@@ -211,9 +260,22 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
             ao->playPCM(move(audioData));
         }
 
-        virtual void onRsErrors(bool uncorrectedErrors, int numCorrectedErrors) override {
-            (void)uncorrectedErrors; (void)numCorrectedErrors; }
-        virtual void onAacErrors(int aacErrors) override { (void)aacErrors; }
+        virtual void onRsErrors(bool uncorrectedErrors, int numCorrectedErrors) override
+        {
+            lock_guard<mutex> lock(errmutex);
+            if (uncorrectedErrors) {
+                rs_uncorrected++;
+            }
+            rs_corrected += numCorrectedErrors;
+            report_errors();
+        }
+
+        virtual void onAacErrors(int aacErrors) override
+        {
+            lock_guard<mutex> lock(errmutex);
+            aac_errors += aacErrors;
+            report_errors();
+        }
         virtual void onNewDynamicLabel(const string& label) override
         {
             cout << "DLS: " << label << endl;
@@ -240,8 +302,40 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
         }
 
     private:
+        /* Reception errors are frequent when the signal is weak, so they are
+         * summarised instead of being printed one by one. Called with errmutex
+         * held. */
+        void report_errors()
+        {
+            const uint64_t now = now_ms();
+            if (now - last_error_report < ERROR_REPORT_MS) {
+                return;
+            }
+            last_error_report = now;
+
+            if (frame_errors or rs_uncorrected or rs_corrected or aac_errors) {
+                cerr << "Reception errors in the last " <<
+                    ERROR_REPORT_MS / 1000 << " seconds:" <<
+                    " frame " << frame_errors <<
+                    ", RS uncorrected " << rs_uncorrected <<
+                    ", RS corrected " << rs_corrected <<
+                    ", AAC " << aac_errors << endl;
+            }
+
+            frame_errors = 0;
+            rs_uncorrected = 0;
+            rs_corrected = 0;
+            aac_errors = 0;
+        }
+
         /* Written by the MSC handler thread, read by the main thread. */
         atomic<uint64_t> last_audio{now_ms()};
+        mutex errmutex;
+        uint64_t last_error_report = now_ms();
+        int frame_errors = 0;
+        int rs_uncorrected = 0;
+        int rs_corrected = 0;
+        int aac_errors = 0;
         mutex aomutex;
         unique_ptr<AlsaOutput> ao;
         bool stereo = true;
@@ -261,6 +355,7 @@ class RadioInterface : public RadioControllerInterface {
             if (isSync) {
                 last_sync = now_ms();
             }
+            lcdInfoScreen->setSignalPresent(isSync);
         }
         virtual void onSignalPresence(bool /*isSignal*/) override { }
         virtual void onServiceDetected(uint32_t sId) override
