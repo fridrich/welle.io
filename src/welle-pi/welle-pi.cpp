@@ -90,6 +90,21 @@ static bool stop_requested()
  * thread. */
 static atomic<bool> retune_requested(false);
 
+/* Milliseconds since an arbitrary point in the past, used by the watchdogs. */
+static uint64_t now_ms()
+{
+    const auto now = chrono::steady_clock::now().time_since_epoch();
+    return chrono::duration_cast<chrono::milliseconds>(now).count();
+}
+
+/* The receiver is tuned but no audio arrived for that long: the subchannel we
+ * are decoding is probably not carrying our programme any more. */
+static const uint64_t AUDIO_TIMEOUT_MS = 30000;
+
+/* No OFDM sync for that long: the demodulator is lost, restarting it makes it
+ * search for the frequency offset again. */
+static const uint64_t SYNC_TIMEOUT_MS = 120000;
+
 class LCDInfoScreen
 {
     public:
@@ -182,6 +197,7 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
         virtual void onNewAudio(vector<int16_t>&& audioData, int sampleRate, const string& mode) override
         {
             (void)mode;
+            last_audio = now_ms();
             lock_guard<mutex> lock(aomutex);
 
             bool reset_ao = sampleRate != (int)rate;
@@ -210,7 +226,22 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
             cout << "X-PAD length mismatch, expected: " << announced_xpad_len << " got: " << xpad_len << endl;
         }
 
+        /* Milliseconds since the last decoded audio frame. */
+        uint64_t audio_age() const
+        {
+            return now_ms() - last_audio;
+        }
+
+        /* Called when we tune, so that the watchdog gives the decoder time to
+         * deliver the first frames. */
+        void resetAudioWatchdog()
+        {
+            last_audio = now_ms();
+        }
+
     private:
+        /* Written by the MSC handler thread, read by the main thread. */
+        atomic<uint64_t> last_audio{now_ms()};
         mutex aomutex;
         unique_ptr<AlsaOutput> ao;
         bool stereo = true;
@@ -224,7 +255,13 @@ class RadioInterface : public RadioControllerInterface {
         RadioInterface(LCDInfoScreen* infoScreen) : lcdInfoScreen(infoScreen) {}
         virtual void onSNR(float /*snr*/) override { }
         virtual void onFrequencyCorrectorChange(int /*fine*/, int /*coarse*/) override { }
-        virtual void onSyncChange(char isSync) override { synced = isSync; }
+        virtual void onSyncChange(char isSync) override
+        {
+            synced = isSync;
+            if (isSync) {
+                last_sync = now_ms();
+            }
+        }
         virtual void onSignalPresence(bool /*isSignal*/) override { }
         virtual void onServiceDetected(uint32_t sId) override
         {
@@ -279,8 +316,25 @@ class RadioInterface : public RadioControllerInterface {
             retune_requested = true;
         }
 
-        bool synced = false;
+        /* Milliseconds since the demodulator was last in sync. */
+        uint64_t sync_age() const
+        {
+            return synced ? 0 : now_ms() - last_sync;
+        }
+
+        /* Called when the receiver is restarted, so that the watchdog gives it
+         * time to find the signal again. */
+        void resetSyncWatchdog()
+        {
+            last_sync = now_ms();
+        }
+
+        atomic<bool> synced{false};
         LCDInfoScreen* lcdInfoScreen;
+
+    private:
+        /* Written by the OFDM processor thread, read by the main thread. */
+        atomic<uint64_t> last_sync{now_ms()};
 };
 
 struct options_t {
@@ -674,6 +728,8 @@ static bool tune_to_service(RadioReceiver& rx, AlsaProgrammeHandler& ph,
 {
     bool service_selected = false;
 
+    ph.resetAudioWatchdog();
+
     for (const auto& s : rx.getServiceList()) {
         if ((service_to_tune_idx && s.serviceId == service_to_tune_idx) ||
                 s.serviceLabel.utf8_label().find(service_to_tune) != string::npos) {
@@ -828,6 +884,29 @@ int main(int argc, char **argv)
         while (not stop_requested()) {
             if (retune_requested.exchange(false)) {
                 cerr << "Ensemble configuration changed, tuning again" << endl;
+                tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
+                retry_delay = 5;
+                continue;
+            }
+
+            /* The demodulator has not seen the signal for a long time. A plain
+             * fade recovers by itself, so if we get here the receiver is lost:
+             * restart it, it will search for the frequency offset again. */
+            if (ri.sync_age() > SYNC_TIMEOUT_MS) {
+                cerr << "No sync for " << SYNC_TIMEOUT_MS / 1000 <<
+                    " seconds, restarting the receiver" << endl;
+                rx.restart(false);
+                ri.resetSyncWatchdog();
+                tuned = false;
+                retry_delay = 5;
+                continue;
+            }
+
+            /* The signal is there but nothing is decoded any more: the
+             * programme has most probably moved to another subchannel. */
+            if (tuned and ri.synced and ph.audio_age() > AUDIO_TIMEOUT_MS) {
+                cerr << "No audio for " << AUDIO_TIMEOUT_MS / 1000 <<
+                    " seconds, tuning again" << endl;
                 tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
                 retry_delay = 5;
                 continue;
