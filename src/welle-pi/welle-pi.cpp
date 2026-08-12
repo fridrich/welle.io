@@ -1249,75 +1249,7 @@ unsigned parse_service_to_tune(const string& name) {
     }
 };
 
-/* A sleep that returns early when a shutdown was requested. */
-static void interruptible_sleep(int seconds)
-{
-    for (int i = 0; i < seconds and not stop_requested(); i++) {
-        this_thread::sleep_for(chrono::seconds(1));
-    }
-}
 
-enum class input_result_t { line, eof, quit, retune };
-
-/* Read one line from stdin, without blocking forever: a shutdown or a retune
- * request has to be honoured even if the user does not type anything. */
-static input_result_t read_service_name(string& service_name)
-{
-    while (not stop_requested()) {
-        if (retune_requested.exchange(false)) {
-            return input_result_t::retune;
-        }
-
-        struct pollfd pfd;
-        pfd.fd = STDIN_FILENO;
-        pfd.events = POLLIN;
-
-        int r = poll(&pfd, 1, 500);
-        if (r < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return input_result_t::eof;
-        }
-        if (r == 0) {
-            continue;
-        }
-
-        if (not getline(cin, service_name)) {
-            return input_result_t::eof;
-        }
-
-        const auto first = service_name.find_first_not_of(" \t\r\n");
-        if (first == string::npos) {
-            service_name.clear();
-        }
-        else {
-            const auto last = service_name.find_last_not_of(" \t\r\n");
-            service_name = service_name.substr(first, last - first + 1);
-        }
-        return input_result_t::line;
-    }
-
-    return input_result_t::quit;
-}
-
-static void print_service_list(RadioReceiver& rx)
-{
-    cerr << "Service list" << endl;
-    for (const auto& s : rx.getServiceList()) {
-        cerr << "  [0x" << hex << s.serviceId << dec << "] " <<
-            s.serviceLabel.utf8_label() << " ";
-        for (const auto& sc : rx.getComponents(s)) {
-            cerr << " [component "  << sc.componentNr <<
-                " ASCTy: " <<
-                (sc.audioType() == AudioServiceComponentType::DAB ? "DAB" :
-                 sc.audioType() == AudioServiceComponentType::DABPlus ? "DAB+" : "unknown") << " ]";
-            const auto& sub = rx.getSubchannel(sc);
-            cerr << " [subch " << sub.subChId << " bitrate:" << sub.bitrate() << " at SAd:" << sub.startAddr << "]";
-        }
-        cerr << endl;
-    }
-}
 
 /* Returns true if we are playing the requested service. */
 static bool tune_to_service(RadioReceiver& rx, AlsaProgrammeHandler& ph,
@@ -1507,113 +1439,134 @@ int main(int argc, char **argv)
     }
     auto freq = channels.getFrequency(options.channel);
     in->setFrequency(freq);
-    string service_to_tune = options.programme;
-    unsigned service_to_tune_idx = parse_service_to_tune(service_to_tune);
 
     RadioReceiver rx(ri, *in, options.rro);
-
-    rx.restart(false);
-
-    cerr << "Wait for sync" << endl;
-    while (not ri.synced and not stop_requested()) {
-        this_thread::sleep_for(chrono::seconds(1));
-    }
-
-    cerr << "Wait for service list" << endl;
-    while (rx.getServiceList().empty() and not stop_requested()) {
-         this_thread::sleep_for(chrono::milliseconds(250));
-    }
-
-    wait_for_complete_ensemble(rx, stop_requested);
-
     AlsaProgrammeHandler ph(&lcdIS, options.pcm);
 
-    bool tuned = false;
-    retune_requested = false;
-    if (not stop_requested() and not service_to_tune.empty()) {
-        print_service_list(rx);
-        tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
+    ConfigManager config;
+    bool hasConfig = config.loadConfig();
+
+    auto stations = config.getStations();
+    int current_station_idx = -1;
+
+    auto tuneToStationIndex = [&](int idx) {
+        if (idx < 0 || idx >= (int)stations.size()) return;
+        current_station_idx = idx;
+        const auto& st = stations[current_station_idx];
+
+        cerr << "Tuning to station: " << st.program << " on " << st.channel << endl;
+
+        auto freq = channels.getFrequency(st.channel);
+        in->setFrequency(freq);
+        rx.restart(false);
+        ri.resetSyncWatchdog();
+        ri.synced = false;
+
+        int sync_wait = 30;
+        while (!ri.synced && sync_wait > 0 && !stop_requested()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            sync_wait--;
+        }
+
+        int service_wait = 50;
+        while (rx.getServiceList().empty() && service_wait > 0 && !stop_requested()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            service_wait--;
+        }
+
+        bool tuned = tune_to_service(rx, ph, *radioScreen, st.program, st.service_id);
+        if (tuned) {
+            config.setLastPlayed(st.channel, st.program);
+            config.saveConfig();
+        }
+    };
+
+    auto menuScreen = make_shared<MenuScreen>();
+
+    radioScreen->setInputCallback([&](InputAction action) {
+        if (action == InputAction::UP) {
+            if (!stations.empty()) {
+                int next_idx = (current_station_idx - 1 + stations.size()) % stations.size();
+                tuneToStationIndex(next_idx);
+            }
+        } else if (action == InputAction::DOWN) {
+            if (!stations.empty()) {
+                int next_idx = (current_station_idx + 1) % stations.size();
+                tuneToStationIndex(next_idx);
+            }
+        } else if (action == InputAction::MENU) {
+            uiManager.setScreen(menuScreen);
+        }
+    });
+
+    menuScreen->setSelectCallback([&](int optionIdx) {
+        if (optionIdx == 0) {
+            runAutoScanner(rx, in.get(), ri, channels, config, uiManager);
+            stations = config.getStations();
+            if (!stations.empty()) {
+                uiManager.setScreen(radioScreen);
+                tuneToStationIndex(0);
+            } else {
+                uiManager.setScreen(radioScreen);
+            }
+        } else if (optionIdx == 1) {
+            uiManager.setScreen(radioScreen);
+        }
+    });
+
+    if (!hasConfig || stations.empty()) {
+        cerr << "No config or empty station list, running auto scan..." << endl;
+        runAutoScanner(rx, in.get(), ri, channels, config, uiManager);
+        stations = config.getStations();
     }
 
-    if (not interactive) {
-        /* Daemon mode: play until we are asked to stop. As long as we did
-         * not manage to tune, keep trying: the ensemble might not have been
-         * completely decoded yet, or the service may come back later. Retry
-         * less and less often so that the log does not fill up. */
-        int retry_delay = 5;
-        while (not stop_requested()) {
-            if (retune_requested.exchange(false)) {
-                cerr << "Ensemble configuration changed, tuning again" << endl;
-                tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
-                retry_delay = 5;
-                continue;
+    if (!stations.empty()) {
+        int start_idx = 0;
+        string last_ch = config.getLastPlayedChannel();
+        string last_pr = config.getLastPlayedProgram();
+        if (!options.programme.empty()) {
+            for (size_t i = 0; i < stations.size(); ++i) {
+                if (stations[i].program.find(options.programme) != string::npos) {
+                    start_idx = i;
+                    break;
+                }
             }
+        } else if (!last_ch.empty() && !last_pr.empty()) {
+            for (size_t i = 0; i < stations.size(); ++i) {
+                if (stations[i].channel == last_ch && stations[i].program == last_pr) {
+                    start_idx = i;
+                    break;
+                }
+            }
+        }
+        uiManager.setScreen(radioScreen);
+        tuneToStationIndex(start_idx);
+    } else {
+        cerr << "No stations found after scan." << endl;
+        uiManager.setScreen(radioScreen);
+    }
 
-            /* The demodulator has not seen the signal for a long time. A plain
-             * fade recovers by itself, so if we get here the receiver is lost:
-             * restart it, it will search for the frequency offset again. */
-            if (ri.sync_age() > SYNC_TIMEOUT_MS) {
-                cerr << "No sync for " << SYNC_TIMEOUT_MS / 1000 <<
-                    " seconds, restarting the receiver" << endl;
-                rx.restart(false);
-                ri.resetSyncWatchdog();
-                tuned = false;
-                retry_delay = 5;
-                continue;
-            }
+    InputQueue inputQueue;
+    thread gpioThread(runGPIOPolling, ref(inputQueue));
+    gpioThread.detach();
 
-            /* The signal is there but nothing is decoded any more: the
-             * programme has most probably moved to another subchannel. */
-            if (tuned and ri.synced and ph.audio_age() > AUDIO_TIMEOUT_MS) {
-                cerr << "No audio for " << AUDIO_TIMEOUT_MS / 1000 <<
-                    " seconds, tuning again" << endl;
-                tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
-                retry_delay = 5;
-                continue;
-            }
+    thread stdinThread;
+    if (interactive) {
+        stdinThread = thread(runStdinReader, ref(inputQueue));
+    }
 
-            if (tuned) {
-                interruptible_sleep(1);
-                continue;
-            }
-
-            interruptible_sleep(retry_delay);
-            if (stop_requested()) {
-                break;
-            }
-
-            print_service_list(rx);
-            tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
-            if (not tuned) {
-                retry_delay = min(60, 2 * retry_delay);
-            }
+    while (!stop_requested()) {
+        InputAction action = inputQueue.pop();
+        if (action == InputAction::QUIT) {
+            break;
+        }
+        if (action != InputAction::NONE) {
+            uiManager.processInput(action);
         }
     }
-    else {
-        while (not stop_requested()) {
-            cerr << "**** Please enter programme name. Enter '.' to quit." << endl;
 
-            string input;
-            const auto result = read_service_name(input);
-            if (result == input_result_t::retune) {
-                cerr << "Ensemble configuration changed, tuning again" << endl;
-                tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
-                continue;
-            }
-            if (result != input_result_t::line or input == ".") {
-                break;
-            }
-            if (input.empty()) {
-                continue;
-            }
-
-            service_to_tune = input;
-            service_to_tune_idx = parse_service_to_tune(service_to_tune);
-            cerr << "**** Trying to tune to " << service_to_tune << endl;
-
-            print_service_list(rx);
-            tuned = tune_to_service(rx, ph, lcdIS, service_to_tune, service_to_tune_idx);
-        }
+    if (stdinThread.joinable()) {
+        stdinThread.join();
     }
 
     cerr << "Shutting down" << endl;
