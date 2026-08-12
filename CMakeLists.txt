@@ -320,6 +320,10 @@ set(welle_cli_sources
 
 set(welle_pi_sources
     src/welle-pi/welle-pi.cpp
+    src/welle-pi/config_manager.cpp
+    src/welle-pi/input_queue.cpp
+    src/welle-pi/screens.cpp
+    src/welle-pi/ui_manager.cpp
     src/welle-cli/alsa-output.cpp
 )
 
