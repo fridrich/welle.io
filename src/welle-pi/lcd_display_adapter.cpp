@@ -22,37 +22,40 @@
  *    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
-#ifndef UI_MANAGER_HPP
-#define UI_MANAGER_HPP
+#include "lcd_display_adapter.hpp"
 
-#include "ui_screen.hpp"
-#include "display_interface.hpp"
-#include <memory>
-#include <mutex>
-#include <condition_variable>
-#include <thread>
-#include <atomic>
+void LCDDisplayAdapter::clear() {
+    m_display.clear();
+}
 
-class UIManager {
-public:
-    UIManager();
-    UIManager(std::unique_ptr<IDisplay> display);
-    ~UIManager();
+void LCDDisplayAdapter::gotoXY(int x, int y) {
+    m_display.gotoXY(x, y);
+}
 
-    void setScreen(std::shared_ptr<UIScreen> newScreen);
-    void processInput(InputAction action);
-    IDisplay& getDisplay();
+void LCDDisplayAdapter::write(const char* text) {
+    m_display.write(text);
+}
 
-private:
-    void run();
+void LCDDisplayAdapter::killEOL() {
+    m_display.killEOL();
+}
 
-    std::unique_ptr<IDisplay> m_display;
-    std::shared_ptr<UIScreen> m_currentScreen;
-    std::atomic<bool> m_exit;
-    std::atomic<bool> m_screenChanged;
-    std::mutex m_mutex;
-    std::condition_variable m_cond;
-    std::thread m_thread;
-};
+void LCDDisplayAdapter::gotoLastLine() {
+    m_display.gotoLastLine();
+}
 
-#endif // UI_MANAGER_HPP
+bool LCDDisplayAdapter::scroll(const char* text) {
+    return m_display.scroll(text);
+}
+
+void LCDDisplayAdapter::interrupt() {
+    m_display.interrupt();
+}
+
+void LCDDisplayAdapter::backlightOn() {
+    m_display.backlightOn();
+}
+
+void LCDDisplayAdapter::backlightOff() {
+    m_display.backlightOff();
+}

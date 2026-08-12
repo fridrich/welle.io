@@ -22,37 +22,21 @@
  *    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
-#ifndef UI_MANAGER_HPP
-#define UI_MANAGER_HPP
+#ifndef DISPLAY_INTERFACE_HPP
+#define DISPLAY_INTERFACE_HPP
 
-#include "ui_screen.hpp"
-#include "display_interface.hpp"
-#include <memory>
-#include <mutex>
-#include <condition_variable>
-#include <thread>
-#include <atomic>
-
-class UIManager {
+class IDisplay {
 public:
-    UIManager();
-    UIManager(std::unique_ptr<IDisplay> display);
-    ~UIManager();
-
-    void setScreen(std::shared_ptr<UIScreen> newScreen);
-    void processInput(InputAction action);
-    IDisplay& getDisplay();
-
-private:
-    void run();
-
-    std::unique_ptr<IDisplay> m_display;
-    std::shared_ptr<UIScreen> m_currentScreen;
-    std::atomic<bool> m_exit;
-    std::atomic<bool> m_screenChanged;
-    std::mutex m_mutex;
-    std::condition_variable m_cond;
-    std::thread m_thread;
+    virtual ~IDisplay() = default;
+    virtual void clear() = 0;
+    virtual void gotoXY(int x, int y) = 0;
+    virtual void write(const char* text) = 0;
+    virtual void killEOL() = 0;
+    virtual void gotoLastLine() = 0;
+    virtual bool scroll(const char* text) = 0;
+    virtual void interrupt() = 0;
+    virtual void backlightOn() {}
+    virtual void backlightOff() {}
 };
 
-#endif // UI_MANAGER_HPP
+#endif // DISPLAY_INTERFACE_HPP

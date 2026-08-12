@@ -324,6 +324,7 @@ set(welle_pi_sources
     src/welle-pi/input_queue.cpp
     src/welle-pi/screens.cpp
     src/welle-pi/ui_manager.cpp
+    src/welle-pi/lcd_display_adapter.cpp
     src/welle-cli/alsa-output.cpp
 )
 

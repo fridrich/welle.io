@@ -22,37 +22,29 @@
  *    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
-#ifndef UI_MANAGER_HPP
-#define UI_MANAGER_HPP
+#ifndef LCD_DISPLAY_ADAPTER_HPP
+#define LCD_DISPLAY_ADAPTER_HPP
 
-#include "ui_screen.hpp"
 #include "display_interface.hpp"
-#include <memory>
-#include <mutex>
-#include <condition_variable>
-#include <thread>
-#include <atomic>
+#include <liblcd/liblcd.h>
 
-class UIManager {
+class LCDDisplayAdapter : public IDisplay {
 public:
-    UIManager();
-    UIManager(std::unique_ptr<IDisplay> display);
-    ~UIManager();
+    LCDDisplayAdapter() = default;
+    ~LCDDisplayAdapter() override = default;
 
-    void setScreen(std::shared_ptr<UIScreen> newScreen);
-    void processInput(InputAction action);
-    IDisplay& getDisplay();
+    void clear() override;
+    void gotoXY(int x, int y) override;
+    void write(const char* text) override;
+    void killEOL() override;
+    void gotoLastLine() override;
+    bool scroll(const char* text) override;
+    void interrupt() override;
+    void backlightOn() override;
+    void backlightOff() override;
 
 private:
-    void run();
-
-    std::unique_ptr<IDisplay> m_display;
-    std::shared_ptr<UIScreen> m_currentScreen;
-    std::atomic<bool> m_exit;
-    std::atomic<bool> m_screenChanged;
-    std::mutex m_mutex;
-    std::condition_variable m_cond;
-    std::thread m_thread;
+    liblcd::LCDDisplay m_display;
 };
 
-#endif // UI_MANAGER_HPP
+#endif // LCD_DISPLAY_ADAPTER_HPP

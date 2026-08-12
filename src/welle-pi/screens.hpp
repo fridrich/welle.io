@@ -38,7 +38,7 @@ class ScanningScreen : public UIScreen {
 public:
     ScanningScreen();
     void setScanningStatus(const std::string& channel, int foundCount);
-    void draw(liblcd::LCDDisplay& display) override;
+    void draw(IDisplay& display) override;
     void interrupt() override;
     void handleInput(InputAction action) override;
 
@@ -57,7 +57,7 @@ public:
     void setProgramName(const std::string& program_name);
     void setDLS(const std::string& dls);
     void setSignalPresent(bool present);
-    void draw(liblcd::LCDDisplay& display) override;
+    void draw(IDisplay& display) override;
     void interrupt() override;
     void handleInput(InputAction action) override;
     void setInputCallback(std::function<void(InputAction)> cb);
@@ -81,7 +81,7 @@ private:
 class StationListScreen : public UIScreen {
 public:
     StationListScreen(const std::vector<ConfigManager::Station>& stations);
-    void draw(liblcd::LCDDisplay& display) override;
+    void draw(IDisplay& display) override;
     void interrupt() override;
     void handleInput(InputAction action) override;
     void setSelectCallback(std::function<void(const ConfigManager::Station&)> cb);
@@ -100,7 +100,7 @@ private:
 class MenuScreen : public UIScreen {
 public:
     MenuScreen();
-    void draw(liblcd::LCDDisplay& display) override;
+    void draw(IDisplay& display) override;
     void interrupt() override;
     void handleInput(InputAction action) override;
     void setSelectCallback(std::function<void(int)> cb);
