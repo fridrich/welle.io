@@ -81,10 +81,11 @@ void RadioScreen::setChannelName(const std::string& channel_name) {
     }
 }
 
-void RadioScreen::setProgramName(const std::string& program_name) {
+void RadioScreen::setProgramName(const std::string& program_name, const std::string& short_program) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_programName != program_name) {
+    if (m_programName != program_name || m_shortProgramName != short_program) {
         m_programName = program_name;
+        m_shortProgramName = short_program;
         m_changed = true;
         m_dlsQueue.clear();
         m_dls.clear();
@@ -116,15 +117,22 @@ void RadioScreen::draw(IDisplay& display) {
     while (!m_interrupted) {
         bool expected = true;
         if (m_changed.compare_exchange_strong(expected, false)) {
-            std::string programName, channelName;
+            std::string programName, channelName, shortProgramName;
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 programName = m_programName;
+                shortProgramName = m_shortProgramName;
                 channelName = m_channelName;
             }
             display.clear();
             display.gotoXY(0,0);
-            display.write(programName.c_str());
+            
+            std::string pToDraw = programName;
+            if (pToDraw.length() > (size_t)display.getWidth() && !shortProgramName.empty()) {
+                pToDraw = shortProgramName;
+            }
+
+            display.write(pToDraw.c_str());
             display.killEOL();
             display.gotoXY(0,1);
             display.write(channelName.c_str());
@@ -189,7 +197,12 @@ void StationListScreen::draw(IDisplay& display) {
             if (m_stations.empty()) {
                 display.write("No stations!");
             } else {
-                std::string line = std::to_string(m_index + 1) + "/" + std::to_string(m_stations.size()) + " " + m_stations[m_index].program;
+                std::string prog = m_stations[m_index].program;
+                std::string line = std::to_string(m_index + 1) + "/" + std::to_string(m_stations.size()) + " " + prog;
+                if (line.length() > (size_t)display.getWidth() && !m_stations[m_index].short_program.empty()) {
+                    prog = m_stations[m_index].short_program;
+                    line = std::to_string(m_index + 1) + "/" + std::to_string(m_stations.size()) + " " + prog;
+                }
                 display.write(line.c_str());
             }
             display.killEOL();

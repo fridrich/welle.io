@@ -54,7 +54,7 @@ class RadioScreen : public UIScreen {
 public:
     RadioScreen();
     void setChannelName(const std::string& channel_name);
-    void setProgramName(const std::string& program_name);
+    void setProgramName(const std::string& program_name, const std::string& short_program = "");
     void setDLS(const std::string& dls);
     void setSignalPresent(bool present);
     void draw(IDisplay& display) override;
@@ -69,6 +69,7 @@ private:
     std::mutex m_mutex;
     std::string m_channelName;
     std::string m_programName;
+    std::string m_shortProgramName;
     std::string m_dls;
     std::deque<std::string> m_dlsQueue;
     std::atomic<bool> m_interrupted;

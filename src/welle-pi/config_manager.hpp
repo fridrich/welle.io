@@ -34,6 +34,7 @@ public:
     struct Station {
         std::string channel;
         std::string program;
+        std::string short_program;
         uint32_t service_id;
     };
 

@@ -767,7 +767,7 @@ static bool tune_to_service(RadioReceiver& rx, AlsaProgrammeHandler& ph,
             }
             else {
                 service_selected = true;
-                lcdIS.setProgramName(s.serviceLabel.utf8_label());
+                lcdIS.setProgramName(s.serviceLabel.utf8_label(), s.serviceLabel.fig1_shortlabel_utf8());
             }
         }
     }
@@ -849,6 +849,7 @@ static void runAutoScanner(RadioReceiver& rx, CVirtualInput* in, RadioInterface&
                     ConfigManager::Station station;
                     station.channel = channel;
                     station.program = label;
+                    station.short_program = s.serviceLabel.fig1_shortlabel_utf8();
                     station.service_id = s.serviceId;
                     config.addStation(station);
                 }
@@ -977,7 +978,7 @@ int main(int argc, char **argv)
         cerr << "Tuning to station: " << st.program << " on " << st.channel << endl;
 
         radioScreen->setChannelName(st.channel);
-        radioScreen->setProgramName("Tuning " + st.program + "...");
+        radioScreen->setProgramName("Tuning " + st.program + "...", "Tune " + st.short_program);
 
         auto freq = channels.getFrequency(st.channel);
         in->setFrequency(freq);
