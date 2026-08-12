@@ -40,6 +40,7 @@
 #include <cstring>
 #include <deque>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -228,125 +229,385 @@ private:
     vector<Station> m_stations;
 };
 
-class LCDInfoScreen
-{
-    public:
-        LCDInfoScreen() {
-            m_display.backlightOn();
-            m_thread = thread(&LCDInfoScreen::draw, this);
-        }
-        ~LCDInfoScreen() {
-            m_exit = true;
-            /* Wake the drawing thread up, it may be scrolling a long text. */
-            m_display.interrupt();
-            if (m_thread.joinable())
-                m_thread.join();
-            m_display.clear();
-        }
-        void setChannelName(const string& channel_name) {
-            lock_guard<mutex> lock(m_mutex);
-            if (m_channelName.compare(channel_name) != 0) {
-                m_channelName = channel_name;
-                m_changed = true;
-            }
-        }
-        void setProgramName(const string& program_name) {
-            {
-                lock_guard<mutex> lock(m_mutex);
-                if (m_programName.compare(program_name) == 0) {
-                    return;
+enum class InputAction { UP, DOWN, LEFT, RIGHT, ENTER, MENU, QUIT, NONE };
+
+class UIScreen {
+public:
+    virtual ~UIScreen() = default;
+    virtual void draw(liblcd::LCDDisplay& display) = 0;
+    virtual void interrupt() = 0;
+    virtual void handleInput(InputAction action) = 0;
+};
+
+class ScanningScreen : public UIScreen {
+public:
+    ScanningScreen() : m_channel(""), m_found(0), m_interrupted(false), m_changed(true) {}
+
+    void setScanningStatus(const string& channel, int foundCount) {
+        lock_guard<mutex> lock(m_mutex);
+        m_channel = channel;
+        m_found = foundCount;
+        m_changed = true;
+    }
+
+    void draw(liblcd::LCDDisplay& display) override {
+        m_interrupted = false;
+        while (!m_interrupted) {
+            bool expected = true;
+            if (m_changed.compare_exchange_strong(expected, false)) {
+                string channel;
+                int found;
+                {
+                    lock_guard<mutex> lock(m_mutex);
+                    channel = m_channel;
+                    found = m_found;
                 }
-                m_programName = program_name;
-                m_changed = true;
-                m_dlsQueue.clear();
-                m_dls.clear();
+                display.clear();
+                display.gotoXY(0,0);
+                string line1 = "Tuning: " + channel + "...";
+                display.write(line1.c_str());
+                display.killEOL();
+                display.gotoXY(0,1);
+                string line2 = "Found: " + to_string(found);
+                display.write(line2.c_str());
+                display.killEOL();
             }
-            m_display.interrupt();
+            this_thread::sleep_for(chrono::milliseconds(100));
         }
-        void setDLS(const string& dls) {
-            lock_guard<mutex> lock(m_mutex);
-            if (m_dlsQueue.empty())
-                m_changed = true;
-            if (m_dlsQueue.empty() || m_dlsQueue.back().compare(dls) != 0) {
-                m_dlsQueue.push_back(dls);
-            }
+    }
+
+    void interrupt() override {
+        m_interrupted = true;
+    }
+
+    void handleInput(InputAction action) override {
+        (void)action;
+    }
+
+private:
+    mutex m_mutex;
+    string m_channel;
+    int m_found;
+    atomic<bool> m_interrupted;
+    atomic<bool> m_changed;
+};
+
+class RadioScreen : public UIScreen {
+public:
+    RadioScreen() : m_channelName(""), m_programName(""), m_interrupted(false), m_changed(true), m_signalPresent(true), m_signalChanged(now_ms()) {}
+
+    void setChannelName(const string& channel_name) {
+        lock_guard<mutex> lock(m_mutex);
+        if (m_channelName != channel_name) {
+            m_channelName = channel_name;
+            m_changed = true;
         }
-        /* Tell the listener that the programme they see on the display is not
-         * being received any more. Short dropouts are not worth reporting, the
-         * message only appears once the signal stayed away for a while. */
-        void setSignalPresent(bool present) {
-            if (m_signalPresent.exchange(present) != present) {
-                m_signalChanged = now_ms();
-            }
+    }
+
+    void setProgramName(const string& program_name) {
+        lock_guard<mutex> lock(m_mutex);
+        if (m_programName != program_name) {
+            m_programName = program_name;
+            m_changed = true;
+            m_dlsQueue.clear();
+            m_dls.clear();
         }
-    private:
-        bool signalLost() const {
-            return not m_signalPresent and
-                now_ms() - m_signalChanged > SIGNAL_LOST_MS;
+    }
+
+    void setDLS(const string& dls) {
+        lock_guard<mutex> lock(m_mutex);
+        if (m_dlsQueue.empty())
+            m_changed = true;
+        if (m_dlsQueue.empty() || m_dlsQueue.back() != dls) {
+            m_dlsQueue.push_back(dls);
         }
-        void draw() {
-            while (!m_exit) {
-                if (m_changed) {
-                    m_changed = false;
-                    string programName, channelName;
+    }
+
+    void setSignalPresent(bool present) {
+        if (m_signalPresent.exchange(present) != present) {
+            m_signalChanged = now_ms();
+            m_changed = true;
+        }
+    }
+
+    void draw(liblcd::LCDDisplay& display) override {
+        m_interrupted = false;
+        while (!m_interrupted) {
+            bool expected = true;
+            if (m_changed.compare_exchange_strong(expected, false)) {
+                string programName, channelName;
+                {
+                    lock_guard<mutex> lock(m_mutex);
+                    programName = m_programName;
+                    channelName = m_channelName;
+                }
+                display.clear();
+                display.gotoXY(0,0);
+                display.write(programName.c_str());
+                display.killEOL();
+                display.gotoXY(0,1);
+                display.write(channelName.c_str());
+                display.killEOL();
+                display.gotoXY(0,0);
+                display.gotoLastLine();
+
+                while (!m_changed && !m_interrupted) {
+                    const bool lost = signalLost();
+                    string text;
+                    bool queueEmpty;
                     {
                         lock_guard<mutex> lock(m_mutex);
-                        programName = m_programName;
-                        channelName = m_channelName;
+                        if (!m_dlsQueue.empty()) {
+                            m_dls = m_dlsQueue.front();
+                            m_dlsQueue.pop_front();
+                        }
+                        queueEmpty = m_dlsQueue.empty();
+                        text = lost ? NO_SIGNAL_TEXT : m_dls;
                     }
-                    m_display.clear();
-                    m_display.gotoXY(0,0);
-                    m_display.write(programName.c_str());
-                    m_display.killEOL();
-                    m_display.gotoXY(0,1);
-                    m_display.write(channelName.c_str());
-                    m_display.killEOL();
-                    m_display.gotoXY(0,0);
-                    m_display.gotoLastLine();
-                    while (!m_changed && !m_exit) {
-                        const bool lost = signalLost();
-                        string text;
-                        bool queueEmpty;
-                        {
-                            lock_guard<mutex> lock(m_mutex);
-                            if (!m_dlsQueue.empty()) {
-                                m_dls = m_dlsQueue.front();
-                                m_dlsQueue.pop_front();
-                            }
-                            queueEmpty = m_dlsQueue.empty();
-                            text = lost ? NO_SIGNAL_TEXT : m_dls;
-                        }
-                        if (m_display.scroll(text.c_str())) {
-                        }
-                        else {
-                            while(!m_changed && !m_exit && queueEmpty &&
-                                    lost == signalLost()) {
-                                sleep(1);
-                                lock_guard<mutex> lock(m_mutex);
-                                queueEmpty = m_dlsQueue.empty();
-                            }
+                    if (display.scroll(text.c_str())) {
+                    } else {
+                        int wait_steps = 10;
+                        while (!m_changed && !m_interrupted && queueEmpty && lost == signalLost() && wait_steps > 0) {
+                            this_thread::sleep_for(chrono::milliseconds(100));
+                            wait_steps--;
                         }
                     }
                 }
             }
+            this_thread::sleep_for(chrono::milliseconds(100));
         }
-        static constexpr const char* NO_SIGNAL_TEXT = "-- no signal --";
-        liblcd::LCDDisplay m_display;
-        mutex m_mutex;
-        string m_channelName;
-        string m_programName;
-        string m_dls;
-        deque<string> m_dlsQueue;
-        thread m_thread;
-        atomic<bool> m_changed{true};
-        atomic<bool> m_exit{false};
-        atomic<bool> m_signalPresent{true};
-        atomic<uint64_t> m_signalChanged{now_ms()};
+    }
+
+    void interrupt() override {
+        m_interrupted = true;
+    }
+
+    void handleInput(InputAction action) override {
+        if (m_inputCallback) {
+            m_inputCallback(action);
+        }
+    }
+
+    void setInputCallback(function<void(InputAction)> cb) {
+        m_inputCallback = cb;
+    }
+
+private:
+    bool signalLost() const {
+        return !m_signalPresent && (now_ms() - m_signalChanged > SIGNAL_LOST_MS);
+    }
+
+    static constexpr const char* NO_SIGNAL_TEXT = "-- no signal --";
+    mutex m_mutex;
+    string m_channelName;
+    string m_programName;
+    string m_dls;
+    deque<string> m_dlsQueue;
+    atomic<bool> m_interrupted;
+    atomic<bool> m_changed;
+    atomic<bool> m_signalPresent;
+    atomic<uint64_t> m_signalChanged;
+    function<void(InputAction)> m_inputCallback;
+};
+
+class StationListScreen : public UIScreen {
+public:
+    StationListScreen(const vector<ConfigManager::Station>& stations) : m_stations(stations), m_index(0), m_interrupted(false), m_changed(true), m_selected(false) {}
+
+    void draw(liblcd::LCDDisplay& display) override {
+        m_interrupted = false;
+        while (!m_interrupted) {
+            bool expected = true;
+            if (m_changed.compare_exchange_strong(expected, false)) {
+                display.clear();
+                display.gotoXY(0,0);
+                display.write("Station List");
+                display.killEOL();
+                display.gotoXY(0,1);
+                if (m_stations.empty()) {
+                    display.write("No stations!");
+                } else {
+                    string line = to_string(m_index + 1) + "/" + to_string(m_stations.size()) + " " + m_stations[m_index].program;
+                    display.write(line.c_str());
+                }
+                display.killEOL();
+            }
+            this_thread::sleep_for(chrono::milliseconds(100));
+        }
+    }
+
+    void interrupt() override {
+        m_interrupted = true;
+    }
+
+    void handleInput(InputAction action) override {
+        if (m_stations.empty()) return;
+        if (action == InputAction::UP) {
+            if (m_index == 0) m_index = m_stations.size() - 1;
+            else m_index--;
+            m_changed = true;
+        } else if (action == InputAction::DOWN) {
+            if (m_index == m_stations.size() - 1) m_index = 0;
+            else m_index++;
+            m_changed = true;
+        } else if (action == InputAction::ENTER) {
+            m_selected = true;
+            if (m_selectCallback) {
+                m_selectCallback(m_stations[m_index]);
+            }
+        }
+    }
+
+    void setSelectCallback(function<void(const ConfigManager::Station&)> cb) {
+        m_selectCallback = cb;
+    }
+
+    bool isSelected() const { return m_selected; }
+    void resetSelected() { m_selected = false; }
+
+private:
+    vector<ConfigManager::Station> m_stations;
+    size_t m_index;
+    atomic<bool> m_interrupted;
+    atomic<bool> m_changed;
+    bool m_selected;
+    function<void(const ConfigManager::Station&)> m_selectCallback;
+};
+
+class MenuScreen : public UIScreen {
+public:
+    MenuScreen() : m_index(0), m_interrupted(false), m_changed(true) {
+        m_options.push_back("1. Manual Rescan");
+        m_options.push_back("2. Back to Radio");
+    }
+
+    void draw(liblcd::LCDDisplay& display) override {
+        m_interrupted = false;
+        while (!m_interrupted) {
+            bool expected = true;
+            if (m_changed.compare_exchange_strong(expected, false)) {
+                display.clear();
+                display.gotoXY(0,0);
+                display.write("Settings Menu");
+                display.killEOL();
+                display.gotoXY(0,1);
+                display.write(m_options[m_index].c_str());
+                display.killEOL();
+            }
+            this_thread::sleep_for(chrono::milliseconds(100));
+        }
+    }
+
+    void interrupt() override {
+        m_interrupted = true;
+    }
+
+    void handleInput(InputAction action) override {
+        if (action == InputAction::UP) {
+            if (m_index == 0) m_index = m_options.size() - 1;
+            else m_index--;
+            m_changed = true;
+        } else if (action == InputAction::DOWN) {
+            if (m_index == m_options.size() - 1) m_index = 0;
+            else m_index++;
+            m_changed = true;
+        } else if (action == InputAction::ENTER) {
+            if (m_selectCallback) {
+                m_selectCallback(m_index);
+            }
+        }
+    }
+
+    void setSelectCallback(function<void(int)> cb) {
+        m_selectCallback = cb;
+    }
+
+private:
+    vector<string> m_options;
+    size_t m_index;
+    atomic<bool> m_interrupted;
+    atomic<bool> m_changed;
+    function<void(int)> m_selectCallback;
+};
+
+class UIManager {
+public:
+    UIManager() : m_exit(false), m_screenChanged(false) {
+        m_display.backlightOn();
+        m_thread = thread(&UIManager::run, this);
+    }
+
+    ~UIManager() {
+        m_exit = true;
+        {
+            lock_guard<mutex> lock(m_mutex);
+            if (m_currentScreen) {
+                m_currentScreen->interrupt();
+            }
+        }
+        m_display.interrupt();
+        m_cond.notify_one();
+        if (m_thread.joinable()) {
+            m_thread.join();
+        }
+        m_display.clear();
+    }
+
+    void setScreen(shared_ptr<UIScreen> newScreen) {
+        {
+            lock_guard<mutex> lock(m_mutex);
+            if (m_currentScreen) {
+                m_currentScreen->interrupt();
+            }
+            m_currentScreen = newScreen;
+            m_screenChanged = true;
+        }
+        m_display.interrupt();
+        m_cond.notify_one();
+    }
+
+    void processInput(InputAction action) {
+        shared_ptr<UIScreen> screen;
+        {
+            lock_guard<mutex> lock(m_mutex);
+            screen = m_currentScreen;
+        }
+        if (screen) {
+            screen->handleInput(action);
+        }
+    }
+
+    liblcd::LCDDisplay& getDisplay() { return m_display; }
+
+private:
+    void run() {
+        while (!m_exit) {
+            shared_ptr<UIScreen> screen;
+            {
+                unique_lock<mutex> lock(m_mutex);
+                m_cond.wait(lock, [this]() { return m_exit || m_screenChanged; });
+                if (m_exit) break;
+                screen = m_currentScreen;
+                m_screenChanged = false;
+            }
+            if (screen) {
+                screen->draw(m_display);
+            }
+        }
+    }
+
+    liblcd::LCDDisplay m_display;
+    shared_ptr<UIScreen> m_currentScreen;
+    atomic<bool> m_exit;
+    atomic<bool> m_screenChanged;
+    mutex m_mutex;
+    condition_variable m_cond;
+    thread m_thread;
 };
 
 class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
     public:
-        AlsaProgrammeHandler(LCDInfoScreen* infoScreen, const string& device) : lcdInfoScreen(infoScreen)
+        AlsaProgrammeHandler(RadioScreen* infoScreen, const string& device) : lcdInfoScreen(infoScreen)
         {
             if (!device.empty())
             {
@@ -475,13 +736,13 @@ class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
         uint64_t last_ao_attempt = 0;
         bool stereo = true;
         unsigned int rate = 48000;
-        LCDInfoScreen* lcdInfoScreen;
+        RadioScreen* lcdInfoScreen;
         string pcm_device;
 };
 
 class RadioInterface : public RadioControllerInterface {
     public:
-        RadioInterface(LCDInfoScreen* infoScreen) : lcdInfoScreen(infoScreen) {}
+        RadioInterface(RadioScreen* infoScreen) : lcdInfoScreen(infoScreen) {}
         virtual void onSNR(float /*snr*/) override { }
         /* Called for every frame. The drift is worth knowing, it tells how far
          * the tuner is off and how much correction range is left, but it has
@@ -577,7 +838,7 @@ class RadioInterface : public RadioControllerInterface {
         }
 
         atomic<bool> synced{false};
-        LCDInfoScreen* lcdInfoScreen;
+        RadioScreen* lcdInfoScreen;
 
     private:
         /* Written by the OFDM processor thread, read by the main thread. */
@@ -974,7 +1235,7 @@ static void print_service_list(RadioReceiver& rx)
 
 /* Returns true if we are playing the requested service. */
 static bool tune_to_service(RadioReceiver& rx, AlsaProgrammeHandler& ph,
-        LCDInfoScreen& lcdIS, const string& service_to_tune,
+        RadioScreen& lcdIS, const string& service_to_tune,
         unsigned service_to_tune_idx)
 {
     bool service_selected = false;
@@ -1034,7 +1295,10 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    LCDInfoScreen lcdIS;
+    UIManager uiManager;
+    auto radioScreen = make_shared<RadioScreen>();
+    uiManager.setScreen(radioScreen);
+    auto& lcdIS = *radioScreen;
 
     RadioInterface ri(&lcdIS);
 
