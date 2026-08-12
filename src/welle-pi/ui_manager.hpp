@@ -26,6 +26,7 @@
 #define UI_MANAGER_HPP
 
 #include "ui_screen.hpp"
+#include "display_interface.hpp"
 #include <memory>
 #include <mutex>
 #include <condition_variable>
@@ -35,16 +36,17 @@
 class UIManager {
 public:
     UIManager();
+    UIManager(std::unique_ptr<IDisplay> display);
     ~UIManager();
 
     void setScreen(std::shared_ptr<UIScreen> newScreen);
     void processInput(InputAction action);
-    liblcd::LCDDisplay& getDisplay();
+    IDisplay& getDisplay();
 
 private:
     void run();
 
-    liblcd::LCDDisplay m_display;
+    std::unique_ptr<IDisplay> m_display;
     std::shared_ptr<UIScreen> m_currentScreen;
     std::atomic<bool> m_exit;
     std::atomic<bool> m_screenChanged;
