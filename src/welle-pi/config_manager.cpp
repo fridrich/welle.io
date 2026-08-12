@@ -101,6 +101,8 @@ bool ConfigManager::loadConfig() {
                 if (ch_it != item.end()) s.channel = ch_it->get<std::string>();
                 auto pr_it = item.find("program");
                 if (pr_it != item.end()) s.program = pr_it->get<std::string>();
+                auto spr_it = item.find("short_program");
+                if (spr_it != item.end()) s.short_program = spr_it->get<std::string>();
                 auto id_it = item.find("service_id");
                 if (id_it != item.end()) s.service_id = id_it->get<uint32_t>();
                 m_stations.push_back(s);
@@ -133,6 +135,7 @@ void ConfigManager::saveConfig() {
             stations_json.push_back({
                 {"channel", s.channel},
                 {"program", s.program},
+                {"short_program", s.short_program},
                 {"service_id", s.service_id}
             });
         }
