@@ -347,7 +347,11 @@ class RadioInterface : public RadioControllerInterface {
             }
             lcdInfoScreen->setSignalPresent(isSync);
         }
-        virtual void onSignalPresence(bool /*isSignal*/) override { }
+        virtual void onSignalPresence(bool isSignal) override
+        {
+            has_signal = isSignal;
+            signal_received = true;
+        }
         virtual void onServiceDetected(uint32_t sId) override
         {
             cout << "New Service: 0x" << hex << sId << dec << endl;
@@ -415,6 +419,8 @@ class RadioInterface : public RadioControllerInterface {
         }
 
         atomic<bool> synced{false};
+        atomic<bool> has_signal{false};
+        atomic<bool> signal_received{false};
         RadioScreen* lcdInfoScreen;
 
     private:
@@ -798,14 +804,31 @@ static void runAutoScanner(RadioReceiver& rx, CVirtualInput* in, RadioInterface&
 
         auto freq = channels.getFrequency(channel);
         in->setFrequency(freq);
-        rx.restart(false);
+        rx.restart(true); // scanMode = true in ofdm-processor
         ri.resetSyncWatchdog();
         ri.synced = false;
+        ri.has_signal = false;
+        ri.signal_received = false;
 
-        int sync_wait = 30;
-        while (!ri.synced && sync_wait > 0 && !stop_requested()) {
+        // Wait up to 1.5 seconds for a signal presence decision
+        int signal_wait = 15;
+        while (!ri.signal_received && signal_wait > 0 && !stop_requested()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            sync_wait--;
+            signal_wait--;
+        }
+
+        // If signal presence decision was received and is false, fast-skip this channel
+        if (ri.signal_received && !ri.has_signal) {
+            continue;
+        }
+
+        // If signal is suspected, wait for OFDM sync (up to 2.0s more)
+        if (!ri.synced) {
+            int sync_wait = 20;
+            while (!ri.synced && sync_wait > 0 && !stop_requested()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                sync_wait--;
+            }
         }
 
         if (ri.synced) {
@@ -815,6 +838,10 @@ static void runAutoScanner(RadioReceiver& rx, CVirtualInput* in, RadioInterface&
                     string label = s.serviceLabel.utf8_label();
                     // Skip services that have empty or whitespace-only labels
                     if (label.find_first_not_of(' ') == string::npos) {
+                        continue;
+                    }
+                    // Exclude non-audio services (data services use IDs > 0xFFFF)
+                    if (s.serviceId > 0xFFFF) {
                         continue;
                     }
                     ConfigManager::Station station;
