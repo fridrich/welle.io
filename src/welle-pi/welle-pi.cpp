@@ -809,17 +809,17 @@ static void runAutoScanner(RadioReceiver& rx, CVirtualInput* in, RadioInterface&
         }
 
         if (ri.synced) {
-            int service_wait = 50;
-            while (rx.getServiceList().empty() && service_wait > 0 && !stop_requested()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                service_wait--;
-            }
+            wait_for_complete_ensemble(rx, stop_requested);
             if (!rx.getServiceList().empty() && !stop_requested()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 for (const auto& s : rx.getServiceList()) {
+                    string label = s.serviceLabel.utf8_label();
+                    // Skip services that have empty or whitespace-only labels
+                    if (label.find_first_not_of(' ') == string::npos) {
+                        continue;
+                    }
                     ConfigManager::Station station;
                     station.channel = channel;
-                    station.program = s.serviceLabel.utf8_label();
+                    station.program = label;
                     station.service_id = s.serviceId;
                     config.addStation(station);
                 }
