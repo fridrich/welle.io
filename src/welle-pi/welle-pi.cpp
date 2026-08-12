@@ -121,6 +121,113 @@ static const uint64_t AO_RETRY_MS = 5000;
 static const uint64_t CORRECTOR_REPORT_MS = 60000;
 static const int CORRECTOR_REPORT_HZ = 100;
 
+class ConfigManager {
+public:
+    struct Station {
+        string channel;
+        string program;
+        uint32_t service_id;
+    };
+
+    ConfigManager(const string& filename = "stations.json") : m_filename(filename) {}
+
+    bool loadConfig() {
+        ifstream f(m_filename);
+        if (!f.is_open()) {
+            return false;
+        }
+        try {
+            nlohmann::json j;
+            f >> j;
+            m_stations.clear();
+            auto lp_it = j.find("last_played");
+            if (lp_it != j.end()) {
+                auto lp = *lp_it;
+                auto ch_it = lp.find("channel");
+                if (ch_it != lp.end()) {
+                    m_lastPlayedChannel = ch_it->get<string>();
+                }
+                auto pr_it = lp.find("program");
+                if (pr_it != lp.end()) {
+                    m_lastPlayedProgram = pr_it->get<string>();
+                }
+            }
+            auto st_it = j.find("stations");
+            if (st_it != j.end()) {
+                for (const auto& item : *st_it) {
+                    Station s;
+                    auto ch_it = item.find("channel");
+                    if (ch_it != item.end()) s.channel = ch_it->get<string>();
+                    auto pr_it = item.find("program");
+                    if (pr_it != item.end()) s.program = pr_it->get<string>();
+                    auto id_it = item.find("service_id");
+                    if (id_it != item.end()) s.service_id = id_it->get<uint32_t>();
+                    m_stations.push_back(s);
+                }
+            }
+            return true;
+        } catch (const exception& e) {
+            cerr << "Error parsing config file: " << e.what() << endl;
+            return false;
+        }
+    }
+
+    void saveConfig() {
+        try {
+            nlohmann::json j;
+            j["last_played"] = {
+                {"channel", m_lastPlayedChannel},
+                {"program", m_lastPlayedProgram}
+            };
+            nlohmann::json stations_json = nlohmann::json::array();
+            for (const auto& s : m_stations) {
+                stations_json.push_back({
+                    {"channel", s.channel},
+                    {"program", s.program},
+                    {"service_id", s.service_id}
+                });
+            }
+            j["stations"] = stations_json;
+
+            ofstream f(m_filename);
+            if (f.is_open()) {
+                f << j.dump(2);
+            } else {
+                cerr << "Failed to open " << m_filename << " for writing" << endl;
+            }
+        } catch (const exception& e) {
+            cerr << "Error saving config file: " << e.what() << endl;
+        }
+    }
+
+    const vector<Station>& getStations() const { return m_stations; }
+    void addStation(const Station& s) {
+        for (const auto& existing : m_stations) {
+            if (existing.channel == s.channel && existing.program == s.program && existing.service_id == s.service_id) {
+                return;
+            }
+        }
+        m_stations.push_back(s);
+    }
+    void clearStations() {
+        m_stations.clear();
+    }
+
+    string getLastPlayedChannel() const { return m_lastPlayedChannel; }
+    string getLastPlayedProgram() const { return m_lastPlayedProgram; }
+
+    void setLastPlayed(const string& channel, const string& program) {
+        m_lastPlayedChannel = channel;
+        m_lastPlayedProgram = program;
+    }
+
+private:
+    string m_filename;
+    string m_lastPlayedChannel;
+    string m_lastPlayedProgram;
+    vector<Station> m_stations;
+};
+
 class LCDInfoScreen
 {
     public:
