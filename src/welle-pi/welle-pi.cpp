@@ -39,6 +39,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <queue>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -604,6 +605,91 @@ private:
     condition_variable m_cond;
     thread m_thread;
 };
+
+class InputQueue {
+public:
+    void push(InputAction action) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_queue.push(action);
+        m_cond.notify_one();
+    }
+
+    InputAction pop(int timeout_ms = 500) {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        if (m_cond.wait_for(lock, std::chrono::milliseconds(timeout_ms), [this]() { return !m_queue.empty(); })) {
+            InputAction action = m_queue.front();
+            m_queue.pop();
+            return action;
+        }
+        return InputAction::NONE;
+    }
+
+private:
+    std::queue<InputAction> m_queue;
+    std::mutex m_mutex;
+    std::condition_variable m_cond;
+};
+
+#define HIGH 1
+#define LOW 0
+#define PIN_NEXT 23
+#define PIN_PREV 24
+
+static int readPin(int pin) {
+    (void)pin;
+    return LOW;
+}
+
+static void runGPIOPolling(InputQueue& queue) {
+    while (!stop_requested()) {
+        if (readPin(PIN_NEXT) == HIGH) {
+            queue.push(InputAction::DOWN);
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+        if (readPin(PIN_PREV) == HIGH) {
+            queue.push(InputAction::UP);
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+}
+
+static void runStdinReader(InputQueue& queue) {
+    while (!stop_requested()) {
+        struct pollfd pfd;
+        pfd.fd = STDIN_FILENO;
+        pfd.events = POLLIN;
+
+        int r = poll(&pfd, 1, 500);
+        if (r < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if (r == 0) continue;
+
+        string line;
+        if (!getline(cin, line)) break;
+        if (line == ".") {
+            queue.push(InputAction::QUIT);
+            break;
+        }
+        if (line == "u" || line == "up") {
+            queue.push(InputAction::UP);
+        } else if (line == "d" || line == "down") {
+            queue.push(InputAction::DOWN);
+        } else if (line == "l" || line == "left") {
+            queue.push(InputAction::LEFT);
+        } else if (line == "r" || line == "right") {
+            queue.push(InputAction::RIGHT);
+        } else if (line == "e" || line == "enter") {
+            queue.push(InputAction::ENTER);
+        } else if (line == "m" || line == "menu") {
+            queue.push(InputAction::MENU);
+        } else if (line == "q" || line == "quit") {
+            queue.push(InputAction::QUIT);
+        }
+    }
+}
 
 class AlsaProgrammeHandler: public ProgrammeHandlerInterface {
     public:
