@@ -26,12 +26,55 @@
 #include "libs/json.hpp"
 #include <fstream>
 #include <iostream>
+#include <cstdlib>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-ConfigManager::ConfigManager(const std::string& filename) : m_filename(filename) {}
+static void create_directories(const std::string& dir_path) {
+    std::string current_path = "";
+    for (size_t i = 0; i < dir_path.size(); ++i) {
+        current_path += dir_path[i];
+        if (dir_path[i] == '/') {
+            if (!current_path.empty()) {
+                mkdir(current_path.c_str(), 0755);
+            }
+        }
+    }
+    if (!current_path.empty() && current_path.back() != '/') {
+        mkdir(current_path.c_str(), 0755);
+    }
+}
+
+ConfigManager::ConfigManager(const std::string& filename) {
+    if (filename != "stations.json") {
+        m_filename = filename;
+    } else {
+        std::string cache_dir = "";
+        const char* xdg_cache = std::getenv("XDG_CACHE_HOME");
+        if (xdg_cache != nullptr && xdg_cache[0] != '\0') {
+            cache_dir = xdg_cache;
+        } else {
+            const char* home_env = std::getenv("HOME");
+            if (home_env != nullptr && home_env[0] != '\0') {
+                cache_dir = std::string(home_env) + "/.cache";
+            } else {
+                cache_dir = "/var/cache";
+            }
+        }
+        m_filename = cache_dir + "/welle-pi/stations.json";
+    }
+}
 
 bool ConfigManager::loadConfig() {
     std::ifstream f(m_filename);
     if (!f.is_open()) {
+        // Fallback check: if the main resolved path doesn't exist, try local stations.json
+        std::ifstream local_f("stations.json");
+        if (local_f.is_open()) {
+            m_filename = "stations.json";
+            return loadConfig();
+        }
         return false;
     }
     try {
@@ -71,6 +114,14 @@ bool ConfigManager::loadConfig() {
 }
 
 void ConfigManager::saveConfig() {
+    if (m_filename != "stations.json") {
+        size_t last_slash = m_filename.find_last_of('/');
+        if (last_slash != std::string::npos) {
+            std::string parent_dir = m_filename.substr(0, last_slash);
+            create_directories(parent_dir);
+        }
+    }
+
     try {
         nlohmann::json j;
         j["last_played"] = {
@@ -91,7 +142,12 @@ void ConfigManager::saveConfig() {
         if (f.is_open()) {
             f << j.dump(2);
         } else {
-            std::cerr << "Failed to open " << m_filename << " for writing" << std::endl;
+            std::cerr << "Failed to open " << m_filename << " for writing. Falling back to local stations.json" << std::endl;
+            m_filename = "stations.json";
+            std::ofstream local_f(m_filename);
+            if (local_f.is_open()) {
+                local_f << j.dump(2);
+            }
         }
     } catch (const std::exception& e) {
         std::cerr << "Error saving config file: " << e.what() << std::endl;
