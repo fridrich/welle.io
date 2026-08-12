@@ -267,6 +267,10 @@ void MenuScreen::handleInput(InputAction action) {
         if (m_selectCallback) {
             m_selectCallback(m_index);
         }
+    } else if (action == InputAction::MENU || action == InputAction::LEFT) {
+        if (m_selectCallback) {
+            m_selectCallback(1); // 1 is "Back to Radio"
+        }
     }
 }
 

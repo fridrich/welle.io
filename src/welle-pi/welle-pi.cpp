@@ -178,6 +178,7 @@ static void runStdinReader(InputQueue& queue) {
             queue.push(InputAction::MENU);
         } else if (line == "q" || line == "quit") {
             queue.push(InputAction::QUIT);
+            break;
         }
     }
 }
@@ -974,6 +975,9 @@ int main(int argc, char **argv)
         const auto& st = stations[current_station_idx];
 
         cerr << "Tuning to station: " << st.program << " on " << st.channel << endl;
+
+        radioScreen->setChannelName(st.channel);
+        radioScreen->setProgramName("Tuning " + st.program + "...");
 
         auto freq = channels.getFrequency(st.channel);
         in->setFrequency(freq);
