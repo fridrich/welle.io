@@ -88,9 +88,9 @@ bool ConfigManager::loadConfig() {
             if (ch_it != lp.end()) {
                 m_lastPlayedChannel = ch_it->get<std::string>();
             }
-            auto pr_it = lp.find("program");
-            if (pr_it != lp.end()) {
-                m_lastPlayedProgram = pr_it->get<std::string>();
+            auto id_it = lp.find("service_id");
+            if (id_it != lp.end()) {
+                m_lastPlayedServiceId = id_it->get<uint32_t>();
             }
         }
         auto st_it = j.find("stations");
@@ -101,6 +101,8 @@ bool ConfigManager::loadConfig() {
                 if (ch_it != item.end()) s.channel = ch_it->get<std::string>();
                 auto pr_it = item.find("program");
                 if (pr_it != item.end()) s.program = pr_it->get<std::string>();
+                auto spr_it = item.find("short_program");
+                if (spr_it != item.end()) s.short_program = spr_it->get<std::string>();
                 auto id_it = item.find("service_id");
                 if (id_it != item.end()) s.service_id = id_it->get<uint32_t>();
                 m_stations.push_back(s);
@@ -126,13 +128,14 @@ void ConfigManager::saveConfig() {
         nlohmann::json j;
         j["last_played"] = {
             {"channel", m_lastPlayedChannel},
-            {"program", m_lastPlayedProgram}
+            {"service_id", m_lastPlayedServiceId}
         };
         nlohmann::json stations_json = nlohmann::json::array();
         for (const auto& s : m_stations) {
             stations_json.push_back({
                 {"channel", s.channel},
                 {"program", s.program},
+                {"short_program", s.short_program},
                 {"service_id", s.service_id}
             });
         }
@@ -170,9 +173,9 @@ void ConfigManager::clearStations() {
 }
 
 std::string ConfigManager::getLastPlayedChannel() const { return m_lastPlayedChannel; }
-std::string ConfigManager::getLastPlayedProgram() const { return m_lastPlayedProgram; }
+uint32_t ConfigManager::getLastPlayedServiceId() const { return m_lastPlayedServiceId; }
 
-void ConfigManager::setLastPlayed(const std::string& channel, const std::string& program) {
+void ConfigManager::setLastPlayed(const std::string& channel, uint32_t service_id) {
     m_lastPlayedChannel = channel;
-    m_lastPlayedProgram = program;
+    m_lastPlayedServiceId = service_id;
 }
