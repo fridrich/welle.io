@@ -23,9 +23,14 @@
  *
  */
 #include "ui_manager.hpp"
+#include "lcd_display_adapter.hpp"
 
-UIManager::UIManager() : m_exit(false), m_screenChanged(false) {
-    m_display.backlightOn();
+UIManager::UIManager() : UIManager(std::make_unique<LCDDisplayAdapter>()) {}
+
+UIManager::UIManager(std::unique_ptr<IDisplay> display)
+    : m_display(std::move(display)), m_exit(false), m_screenChanged(false)
+{
+    m_display->backlightOn();
     m_thread = std::thread(&UIManager::run, this);
 }
 
@@ -37,12 +42,12 @@ UIManager::~UIManager() {
             m_currentScreen->interrupt();
         }
     }
-    m_display.interrupt();
+    m_display->interrupt();
     m_cond.notify_one();
     if (m_thread.joinable()) {
         m_thread.join();
     }
-    m_display.clear();
+    m_display->clear();
 }
 
 void UIManager::setScreen(std::shared_ptr<UIScreen> newScreen) {
@@ -54,7 +59,7 @@ void UIManager::setScreen(std::shared_ptr<UIScreen> newScreen) {
         m_currentScreen = newScreen;
         m_screenChanged = true;
     }
-    m_display.interrupt();
+    m_display->interrupt();
     m_cond.notify_one();
 }
 
@@ -69,7 +74,7 @@ void UIManager::processInput(InputAction action) {
     }
 }
 
-liblcd::LCDDisplay& UIManager::getDisplay() { return m_display; }
+IDisplay& UIManager::getDisplay() { return *m_display; }
 
 void UIManager::run() {
     while (!m_exit) {
@@ -82,7 +87,7 @@ void UIManager::run() {
             m_screenChanged = false;
         }
         if (screen) {
-            screen->draw(m_display);
+            screen->draw(*m_display);
         }
     }
 }

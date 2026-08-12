@@ -26,12 +26,12 @@
 #define UI_SCREEN_HPP
 
 #include "input_queue.hpp"
-#include <liblcd/liblcd.h>
+#include "display_interface.hpp"
 
 class UIScreen {
 public:
     virtual ~UIScreen() = default;
-    virtual void draw(liblcd::LCDDisplay& display) = 0;
+    virtual void draw(IDisplay& display) = 0;
     virtual void interrupt() = 0;
     virtual void handleInput(InputAction action) = 0;
 };

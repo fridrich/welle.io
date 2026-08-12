@@ -36,7 +36,7 @@ void ScanningScreen::setScanningStatus(const std::string& channel, int foundCoun
     m_changed = true;
 }
 
-void ScanningScreen::draw(liblcd::LCDDisplay& display) {
+void ScanningScreen::draw(IDisplay& display) {
     m_interrupted = false;
     while (!m_interrupted) {
         bool expected = true;
@@ -111,7 +111,7 @@ bool RadioScreen::signalLost() const {
     return !m_signalPresent && (now_ms() - m_signalChanged > SIGNAL_LOST_MS);
 }
 
-void RadioScreen::draw(liblcd::LCDDisplay& display) {
+void RadioScreen::draw(IDisplay& display) {
     m_interrupted = false;
     while (!m_interrupted) {
         bool expected = true;
@@ -176,7 +176,7 @@ void RadioScreen::setInputCallback(std::function<void(InputAction)> cb) {
 // StationListScreen implementation
 StationListScreen::StationListScreen(const std::vector<ConfigManager::Station>& stations) : m_stations(stations), m_index(0), m_interrupted(false), m_changed(true), m_selected(false) {}
 
-void StationListScreen::draw(liblcd::LCDDisplay& display) {
+void StationListScreen::draw(IDisplay& display) {
     m_interrupted = false;
     while (!m_interrupted) {
         bool expected = true;
@@ -233,7 +233,7 @@ MenuScreen::MenuScreen() : m_index(0), m_interrupted(false), m_changed(true) {
     m_options.push_back("2. Back to Radio");
 }
 
-void MenuScreen::draw(liblcd::LCDDisplay& display) {
+void MenuScreen::draw(IDisplay& display) {
     m_interrupted = false;
     while (!m_interrupted) {
         bool expected = true;
