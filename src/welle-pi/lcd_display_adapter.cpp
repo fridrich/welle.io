@@ -59,3 +59,11 @@ void LCDDisplayAdapter::backlightOn() {
 void LCDDisplayAdapter::backlightOff() {
     m_display.backlightOff();
 }
+
+int LCDDisplayAdapter::getWidth() const {
+    return const_cast<liblcd::LCDDisplay&>(m_display).getWidth();
+}
+
+int LCDDisplayAdapter::getHeight() const {
+    return const_cast<liblcd::LCDDisplay&>(m_display).getHeight();
+}
