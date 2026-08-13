@@ -1206,6 +1206,7 @@ int main(int argc, char **argv)
     while (!stop_requested()) {
         InputAction action = inputQueue.pop();
         if (action == InputAction::QUIT) {
+            quit_requested = 1;
             break;
         }
         if (action != InputAction::NONE) {

@@ -307,9 +307,9 @@ void StationListScreen::resetSelected() { m_selected = false; }
 
 // MenuScreen implementation
 MenuScreen::MenuScreen(UIManager* uiManager) : m_uiManager(uiManager), m_index(0), m_interrupted(false), m_changed(true) {
-    m_options.push_back("1. Manual Rescan");
-    m_options.push_back("2. Back to Radio");
-    m_options.push_back("3. Exit");
+    m_options.push_back("Manual Rescan");
+    m_options.push_back("Back to Radio");
+    m_options.push_back("Exit");
 }
 
 void MenuScreen::draw(IDisplay& display) {
@@ -319,12 +319,76 @@ void MenuScreen::draw(IDisplay& display) {
         bool expected = true;
         if (m_changed.compare_exchange_strong(expected, false)) {
             display.clear();
+            
+            int width = display.getWidth();
+            if (width == 0) width = 40; // We are debugging and only the debug output is interesting
+            if (width < 4) width = 16; // fallback safety
+            int height = display.getHeight();
+            if (height < 2) height = 2; // fallback safety
+            
+            // Line 0: Header
             display.gotoXY(0,0);
             display.write("Settings Menu");
             display.killEOL();
-            display.gotoXY(0,1);
-            display.write(m_options[m_index].c_str());
-            display.killEOL();
+            
+            bool debugging = !display.hasDisplay();
+
+            // Draw menu options in the remaining lines (y = 1..height-1)
+            if (height == 2) {
+                display.gotoXY(0, 1);
+                std::string option = m_options[m_index];
+                if (debugging) {
+                    std::string wrapped = ">" + option + "<";
+                    display.write(wrapped.c_str());
+                } else {
+                    int name_limit = width - 2;
+                    if (option.length() > (size_t)name_limit) {
+                        option = option.substr(0, name_limit);
+                    }
+                    if (option.length() < (size_t)name_limit) {
+                        option.append(name_limit - option.length(), ' ');
+                    }
+                    std::string wrapped = ">" + option + "<";
+                    display.write(wrapped.c_str());
+                }
+                display.killEOL();
+            } else {
+                // Determine where to place the focused line relative to display lines 1..height-1
+                int list_lines = height - 1;
+                int focused_line = list_lines / 2; // e.g. for height=4 (list_lines=3), focused_line=1
+                
+                for (int y = 1; y < height; ++y) {
+                    display.gotoXY(0, y);
+                    
+                    int offset = y - 1 - focused_line;
+                    // Safe modulo wrap-around
+                    int item_index = ((int)m_index + offset + (int)m_options.size()) % (int)m_options.size();
+                    
+                    std::string option = m_options[item_index];
+                    
+                    if (offset == 0) {
+                        // This is the active/focused option
+                        if (debugging) {
+                            std::string wrapped = ">" + option + "<";
+                            display.write(wrapped.c_str());
+                        } else {
+                            int name_limit = width - 2;
+                            if (option.length() > (size_t)name_limit) {
+                                option = option.substr(0, name_limit);
+                            }
+                            if (option.length() < (size_t)name_limit) {
+                                option.append(name_limit - option.length(), ' ');
+                            }
+                            std::string wrapped = ">" + option + "<";
+                            display.write(wrapped.c_str());
+                        }
+                    } else {
+                        // Non-focused option: raw unpadded string
+                        display.write(option.c_str());
+                    }
+                    display.killEOL();
+                }
+            }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
@@ -344,7 +408,7 @@ void MenuScreen::handleInput(InputAction action) {
         else m_index++;
         m_changed = true;
     } else if (action == InputAction::ENTER) {
-        if (m_index == 1) { // 2. Back to Radio
+        if (m_index == 1) { // Back to Radio
             if (m_uiManager) {
                 m_uiManager->popScreen();
             }
