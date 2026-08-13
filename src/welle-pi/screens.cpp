@@ -23,6 +23,7 @@
  *
  */
 #include "screens.hpp"
+#include "ui_manager.hpp"
 #include "utils.hpp"
 #include <thread>
 
@@ -130,7 +131,7 @@ void RadioScreen::draw(IDisplay& display) {
             display.gotoXY(0,0);
             
             std::string pToDraw = programName;
-            if (pToDraw.length() > (size_t)display.getWidth() && !shortProgramName.empty()) {
+            if (display.getWidth() && pToDraw.length() > (size_t)display.getWidth() && !shortProgramName.empty()) {
                 pToDraw = shortProgramName;
             }
 
@@ -184,23 +185,18 @@ void RadioScreen::setInputCallback(std::function<void(InputAction)> cb) {
 }
 
 // StationListScreen implementation
-StationListScreen::StationListScreen(const std::vector<ConfigManager::Station>& stations) : m_stations(stations), m_index(0), m_interrupted(false), m_changed(true), m_selected(false), m_lastInputTime(0) {}
+StationListScreen::StationListScreen(const std::vector<ConfigManager::Station>& stations, UIManager* uiManager)
+    : m_stations(stations), m_uiManager(uiManager), m_index(0), m_interrupted(false), m_changed(true), m_selected(false) {}
 
 void StationListScreen::draw(IDisplay& display) {
     m_interrupted = false;
-    m_lastInputTime = now_ms(); // Reset on screen activation
     while (!m_interrupted) {
-        if (now_ms() - m_lastInputTime > INACTIVITY_TIMEOUT_MS) {
-            if (m_cancelCallback) {
-                m_cancelCallback();
-            }
-            break;
-        }
         bool expected = true;
         if (m_changed.compare_exchange_strong(expected, false)) {
             display.clear();
             
             int width = display.getWidth();
+            if (width == 0) width = 40; // We are debugging and only the debug output is interesting
             if (width < 4) width = 16; // fallback safety
             int height = display.getHeight();
             if (height < 2) height = 2; // fallback safety
@@ -269,7 +265,6 @@ void StationListScreen::interrupt() {
 }
 
 void StationListScreen::handleInput(InputAction action) {
-    m_lastInputTime = now_ms(); // Reset the timer on any input!
     if (m_stations.empty()) return;
     if (action == InputAction::UP) {
         if (m_index == 0) m_index = m_stations.size() - 1;
@@ -285,8 +280,8 @@ void StationListScreen::handleInput(InputAction action) {
             m_selectCallback(m_stations[m_index]);
         }
     } else if (action == InputAction::LEFT || action == InputAction::MENU || action == InputAction::QUIT) {
-        if (m_cancelCallback) {
-            m_cancelCallback();
+        if (m_uiManager) {
+            m_uiManager->popScreen();
         }
     }
 }
@@ -295,12 +290,7 @@ void StationListScreen::setSelectCallback(std::function<void(const ConfigManager
     m_selectCallback = cb;
 }
 
-void StationListScreen::setCancelCallback(std::function<void()> cb) {
-    m_cancelCallback = cb;
-}
-
 void StationListScreen::setIndex(size_t index) {
-    m_lastInputTime = now_ms(); // Reset timer on programmatic index changes
     if (index < m_stations.size()) {
         m_index = index;
         m_changed = true;
@@ -311,7 +301,7 @@ bool StationListScreen::isSelected() const { return m_selected; }
 void StationListScreen::resetSelected() { m_selected = false; }
 
 // MenuScreen implementation
-MenuScreen::MenuScreen() : m_index(0), m_interrupted(false), m_changed(true) {
+MenuScreen::MenuScreen(UIManager* uiManager) : m_uiManager(uiManager), m_index(0), m_interrupted(false), m_changed(true) {
     m_options.push_back("1. Manual Rescan");
     m_options.push_back("2. Back to Radio");
     m_options.push_back("3. Exit");
@@ -349,12 +339,18 @@ void MenuScreen::handleInput(InputAction action) {
         else m_index++;
         m_changed = true;
     } else if (action == InputAction::ENTER) {
-        if (m_selectCallback) {
-            m_selectCallback(m_index);
+        if (m_index == 1) { // 2. Back to Radio
+            if (m_uiManager) {
+                m_uiManager->popScreen();
+            }
+        } else {
+            if (m_selectCallback) {
+                m_selectCallback(m_index);
+            }
         }
     } else if (action == InputAction::MENU || action == InputAction::LEFT) {
-        if (m_selectCallback) {
-            m_selectCallback(1); // 1 is "Back to Radio"
+        if (m_uiManager) {
+            m_uiManager->popScreen();
         }
     }
 }
