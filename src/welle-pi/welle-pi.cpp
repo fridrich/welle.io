@@ -1009,7 +1009,7 @@ int main(int argc, char **argv)
 
         bool tuned = tune_to_service(rx, ph, *radioScreen, st.program, st.service_id);
         if (tuned) {
-            config.setLastPlayed(st.channel, st.program);
+            config.setLastPlayed(st.channel, st.service_id);
             config.saveConfig();
         }
     };
@@ -1056,7 +1056,7 @@ int main(int argc, char **argv)
     if (!stations.empty()) {
         int start_idx = 0;
         string last_ch = config.getLastPlayedChannel();
-        string last_pr = config.getLastPlayedProgram();
+        uint32_t last_id = config.getLastPlayedServiceId();
         if (!options.programme.empty()) {
             for (size_t i = 0; i < stations.size(); ++i) {
                 if (stations[i].program.find(options.programme) != string::npos) {
@@ -1064,9 +1064,9 @@ int main(int argc, char **argv)
                     break;
                 }
             }
-        } else if (!last_ch.empty() && !last_pr.empty()) {
+        } else if (!last_ch.empty() && last_id != 0) {
             for (size_t i = 0; i < stations.size(); ++i) {
-                if (stations[i].channel == last_ch && stations[i].program == last_pr) {
+                if (stations[i].channel == last_ch && stations[i].service_id == last_id) {
                     start_idx = i;
                     break;
                 }

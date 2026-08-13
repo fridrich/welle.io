@@ -48,14 +48,14 @@ public:
     void clearStations();
 
     std::string getLastPlayedChannel() const;
-    std::string getLastPlayedProgram() const;
+    uint32_t getLastPlayedServiceId() const;
 
-    void setLastPlayed(const std::string& channel, const std::string& program);
+    void setLastPlayed(const std::string& channel, uint32_t service_id);
 
 private:
     std::string m_filename;
     std::string m_lastPlayedChannel;
-    std::string m_lastPlayedProgram;
+    uint32_t m_lastPlayedServiceId = 0;
     std::vector<Station> m_stations;
 };
 
