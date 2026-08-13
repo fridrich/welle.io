@@ -631,6 +631,25 @@ if (BUILD_WELLE_PI)
         ${LIBLCD_LIBRARIES}
         Threads::Threads
     )
+
+    if(BUILD_TESTS)
+        add_executable(navigation_tests
+            src/tests/navigation_tests.cpp
+            src/welle-pi/ui_manager.cpp
+            src/welle-pi/lcd_display_adapter.cpp
+        )
+        target_include_directories(navigation_tests PRIVATE
+            src/welle-pi
+        )
+        # checks are assert(); keep them in Release
+        target_compile_options(navigation_tests PRIVATE -UNDEBUG)
+        target_link_libraries(navigation_tests
+            ${LIBLCD_LIBRARIES}
+            Threads::Threads
+        )
+        add_test(NAME unit.navigation COMMAND navigation_tests)
+        set_tests_properties(unit.navigation PROPERTIES LABELS unit)
+    endif()
     if(UNIX AND NOT APPLE OR NOT WITH_APP_BUNDLE)
         INSTALL (TARGETS ${piExecutableName} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     endif()

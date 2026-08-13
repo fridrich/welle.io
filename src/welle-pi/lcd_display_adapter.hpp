@@ -43,6 +43,9 @@ public:
     void backlightOn() override;
     void backlightOff() override;
 
+    int getWidth() const override;
+    int getHeight() const override;
+
 private:
     liblcd::LCDDisplay m_display;
 };
