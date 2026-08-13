@@ -38,6 +38,7 @@ public:
     virtual void backlightOn() {}
     virtual void backlightOff() {}
     virtual int getWidth() const { return 16; }
+    virtual int getHeight() const { return 2; }
 };
 
 #endif // DISPLAY_INTERFACE_HPP

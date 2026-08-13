@@ -170,7 +170,35 @@ static void runStdinReader(InputQueue& queue) {
         char c;
         if (read(STDIN_FILENO, &c, 1) != 1) break;
 
-        if (c == '.' || c == 'q') {
+        if (c == '\033') { // Escape sequence (potential arrow key)
+            struct pollfd pfd_next;
+            pfd_next.fd = STDIN_FILENO;
+            pfd_next.events = POLLIN;
+            if (poll(&pfd_next, 1, 50) > 0) {
+                char seq[2];
+                if (read(STDIN_FILENO, &seq[0], 1) == 1 && seq[0] == '[') {
+                    if (poll(&pfd_next, 1, 50) > 0) {
+                        if (read(STDIN_FILENO, &seq[1], 1) == 1) {
+                            if (seq[1] == 'A') {
+                                queue.push(InputAction::UP);
+                                continue;
+                            } else if (seq[1] == 'B') {
+                                queue.push(InputAction::DOWN);
+                                continue;
+                            } else if (seq[1] == 'C') {
+                                queue.push(InputAction::RIGHT);
+                                continue;
+                            } else if (seq[1] == 'D') {
+                                queue.push(InputAction::LEFT);
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+            // Just the ESC key alone: map to MENU (cancel/back)
+            queue.push(InputAction::MENU);
+        } else if (c == '.' || c == 'q') {
             queue.push(InputAction::QUIT);
             break;
         } else if (c == 'u') {
@@ -969,9 +997,19 @@ int main(int argc, char **argv)
             // cout << "setting rtl_tcp host to '" << host << "', port to '" << atoi(port.c_str()) << "'" << endl;
         }
     }
+    InputQueue inputQueue;
+
     ConfigManager config;
     bool hasConfig = config.loadConfig();
-    auto stations = config.getStations();
+
+    std::vector<ConfigManager::Station> stations;
+    auto load_and_sort_stations = [&]() {
+        stations = config.getStations();
+        std::sort(stations.begin(), stations.end(), [](const ConfigManager::Station& a, const ConfigManager::Station& b) {
+            return a.program < b.program;
+        });
+    };
+    load_and_sort_stations();
 
     std::string start_channel = options.channel;
     if (start_channel.empty()) {
@@ -979,11 +1017,7 @@ int main(int argc, char **argv)
         if (!last_ch.empty()) {
             start_channel = last_ch;
         } else if (!stations.empty()) {
-            auto sorted_stations = stations;
-            std::sort(sorted_stations.begin(), sorted_stations.end(), [](const ConfigManager::Station& a, const ConfigManager::Station& b) {
-                return a.program < b.program;
-            });
-            start_channel = sorted_stations[0].channel;
+            start_channel = stations[0].channel;
         } else {
             start_channel = "10B";
         }
@@ -1033,17 +1067,35 @@ int main(int argc, char **argv)
     auto menuScreen = make_shared<MenuScreen>();
 
     radioScreen->setInputCallback([&](InputAction action) {
-        if (action == InputAction::UP) {
+        if (action == InputAction::UP || action == InputAction::DOWN) {
             if (!stations.empty()) {
-                int next_idx = (current_station_idx - 1 + stations.size()) % stations.size();
-                tuneToStationIndex(next_idx);
+                auto stationListScreen = make_shared<StationListScreen>(stations);
+                stationListScreen->setIndex(current_station_idx >= 0 ? current_station_idx : 0);
+
+                if (action == InputAction::UP) {
+                    stationListScreen->handleInput(InputAction::UP);
+                } else if (action == InputAction::DOWN) {
+                    stationListScreen->handleInput(InputAction::DOWN);
+                }
+
+                stationListScreen->setSelectCallback([&](const ConfigManager::Station& st) {
+                    for (size_t i = 0; i < stations.size(); ++i) {
+                        if (stations[i].channel == st.channel && stations[i].service_id == st.service_id) {
+                            uiManager.setScreen(radioScreen);
+                            tuneToStationIndex((int)i);
+                            return;
+                        }
+                    }
+                    uiManager.setScreen(radioScreen);
+                });
+
+                stationListScreen->setCancelCallback([&]() {
+                    uiManager.setScreen(radioScreen);
+                });
+
+                uiManager.setScreen(stationListScreen);
             }
-        } else if (action == InputAction::DOWN) {
-            if (!stations.empty()) {
-                int next_idx = (current_station_idx + 1) % stations.size();
-                tuneToStationIndex(next_idx);
-            }
-        } else if (action == InputAction::MENU) {
+        } else if (action == InputAction::MENU || action == InputAction::ENTER) {
             uiManager.setScreen(menuScreen);
         }
     });
@@ -1051,7 +1103,7 @@ int main(int argc, char **argv)
     menuScreen->setSelectCallback([&](int optionIdx) {
         if (optionIdx == 0) {
             runAutoScanner(rx, in.get(), ri, channels, config, uiManager);
-            stations = config.getStations();
+            load_and_sort_stations();
             if (!stations.empty()) {
                 uiManager.setScreen(radioScreen);
                 tuneToStationIndex(0);
@@ -1060,13 +1112,15 @@ int main(int argc, char **argv)
             }
         } else if (optionIdx == 1) {
             uiManager.setScreen(radioScreen);
+        } else if (optionIdx == 2) {
+            inputQueue.push(InputAction::QUIT);
         }
     });
 
     if (!hasConfig || stations.empty()) {
         cerr << "No config or empty station list, running auto scan..." << endl;
         runAutoScanner(rx, in.get(), ri, channels, config, uiManager);
-        stations = config.getStations();
+        load_and_sort_stations();
     }
 
     if (!stations.empty()) {
@@ -1137,27 +1191,14 @@ int main(int argc, char **argv)
 
         // 3. Fallback to alphabetically-first station
         if (!startup_tuned) {
-            auto sorted_stations = stations;
-            std::sort(sorted_stations.begin(), sorted_stations.end(), [](const ConfigManager::Station& a, const ConfigManager::Station& b) {
-                return a.program < b.program;
-            });
-            int first_idx = 0;
-            for (size_t i = 0; i < stations.size(); ++i) {
-                if (stations[i].channel == sorted_stations[0].channel &&
-                    stations[i].service_id == sorted_stations[0].service_id) {
-                    first_idx = (int)i;
-                    break;
-                }
-            }
             uiManager.setScreen(radioScreen);
-            startup_tuned = tuneToStationIndex(first_idx);
+            startup_tuned = tuneToStationIndex(0);
         }
     } else {
         cerr << "No stations found after scan." << endl;
         uiManager.setScreen(radioScreen);
     }
 
-    InputQueue inputQueue;
     thread gpioThread(runGPIOPolling, ref(inputQueue));
     gpioThread.detach();
 

@@ -86,16 +86,21 @@ public:
     void interrupt() override;
     void handleInput(InputAction action) override;
     void setSelectCallback(std::function<void(const ConfigManager::Station&)> cb);
+    void setCancelCallback(std::function<void()> cb);
+    void setIndex(size_t index);
     bool isSelected() const;
     void resetSelected();
 
 private:
+    static constexpr uint64_t INACTIVITY_TIMEOUT_MS = 10000; // 10 seconds auto-exit
     std::vector<ConfigManager::Station> m_stations;
     size_t m_index;
     std::atomic<bool> m_interrupted;
     std::atomic<bool> m_changed;
     bool m_selected;
+    std::atomic<uint64_t> m_lastInputTime;
     std::function<void(const ConfigManager::Station&)> m_selectCallback;
+    std::function<void()> m_cancelCallback;
 };
 
 class MenuScreen : public UIScreen {

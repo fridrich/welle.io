@@ -182,30 +182,81 @@ void RadioScreen::setInputCallback(std::function<void(InputAction)> cb) {
 }
 
 // StationListScreen implementation
-StationListScreen::StationListScreen(const std::vector<ConfigManager::Station>& stations) : m_stations(stations), m_index(0), m_interrupted(false), m_changed(true), m_selected(false) {}
+StationListScreen::StationListScreen(const std::vector<ConfigManager::Station>& stations) : m_stations(stations), m_index(0), m_interrupted(false), m_changed(true), m_selected(false), m_lastInputTime(0) {}
 
 void StationListScreen::draw(IDisplay& display) {
     m_interrupted = false;
+    m_lastInputTime = now_ms(); // Reset on screen activation
     while (!m_interrupted) {
+        if (now_ms() - m_lastInputTime > INACTIVITY_TIMEOUT_MS) {
+            if (m_cancelCallback) {
+                m_cancelCallback();
+            }
+            break;
+        }
         bool expected = true;
         if (m_changed.compare_exchange_strong(expected, false)) {
             display.clear();
-            display.gotoXY(0,0);
-            display.write("Station List");
-            display.killEOL();
-            display.gotoXY(0,1);
+            
+            int width = display.getWidth();
+            if (width < 4) width = 16; // fallback safety
+            int height = display.getHeight();
+            if (height < 2) height = 2; // fallback safety
+            
             if (m_stations.empty()) {
+                display.gotoXY(0,0);
                 display.write("No stations!");
+                display.killEOL();
             } else {
-                std::string prog = m_stations[m_index].program;
-                std::string line = std::to_string(m_index + 1) + "/" + std::to_string(m_stations.size()) + " " + prog;
-                if (line.length() > (size_t)display.getWidth() && !m_stations[m_index].short_program.empty()) {
-                    prog = m_stations[m_index].short_program;
-                    line = std::to_string(m_index + 1) + "/" + std::to_string(m_stations.size()) + " " + prog;
+                // Line 0: Header with index/total
+                display.gotoXY(0,0);
+                std::string header = "Select: " + std::to_string(m_index + 1) + "/" + std::to_string(m_stations.size());
+                if (header.length() > (size_t)width) {
+                    header = std::to_string(m_index + 1) + "/" + std::to_string(m_stations.size());
                 }
-                display.write(line.c_str());
+                display.write(header.c_str());
+                display.killEOL();
+                
+                // Determine where to place the focused line relative to display lines 1..height-1
+                int list_lines = height - 1;
+                int focused_line = list_lines / 2; // e.g. for height=4 (list_lines=3), focused_line=1 (the middle line)
+                
+                for (int y = 1; y < height; ++y) {
+                    display.gotoXY(0, y);
+                    
+                    int offset = y - 1 - focused_line;
+                    // Safe modulo wrap-around
+                    int item_index = ((int)m_index + offset + (int)m_stations.size()) % (int)m_stations.size();
+                    
+                    std::string prog = m_stations[item_index].program;
+                    
+                    if (offset == 0) {
+                        // This is the active/focused station
+                        if (width < 16) {
+                            if (!m_stations[item_index].short_program.empty()) {
+                                prog = m_stations[item_index].short_program;
+                            }
+                            std::string wrapped = ">" + prog;
+                            display.write(wrapped.c_str());
+                        } else {
+                            // Typical 16+ chars display. Use long name, bounded by ">" and "<"
+                            int name_limit = width - 2;
+                            if (prog.length() > (size_t)name_limit) {
+                                prog = prog.substr(0, name_limit);
+                            }
+                            if (prog.length() < (size_t)name_limit) {
+                                prog.append(name_limit - prog.length(), ' ');
+                            }
+                            std::string wrapped = ">" + prog + "<";
+                            display.write(wrapped.c_str());
+                        }
+                    } else {
+                        // Non-focused station: raw unpadded string
+                        display.write(prog.c_str());
+                    }
+                    display.killEOL();
+                }
             }
-            display.killEOL();
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
@@ -216,6 +267,7 @@ void StationListScreen::interrupt() {
 }
 
 void StationListScreen::handleInput(InputAction action) {
+    m_lastInputTime = now_ms(); // Reset the timer on any input!
     if (m_stations.empty()) return;
     if (action == InputAction::UP) {
         if (m_index == 0) m_index = m_stations.size() - 1;
@@ -230,11 +282,27 @@ void StationListScreen::handleInput(InputAction action) {
         if (m_selectCallback) {
             m_selectCallback(m_stations[m_index]);
         }
+    } else if (action == InputAction::LEFT || action == InputAction::MENU || action == InputAction::QUIT) {
+        if (m_cancelCallback) {
+            m_cancelCallback();
+        }
     }
 }
 
 void StationListScreen::setSelectCallback(std::function<void(const ConfigManager::Station&)> cb) {
     m_selectCallback = cb;
+}
+
+void StationListScreen::setCancelCallback(std::function<void()> cb) {
+    m_cancelCallback = cb;
+}
+
+void StationListScreen::setIndex(size_t index) {
+    m_lastInputTime = now_ms(); // Reset timer on programmatic index changes
+    if (index < m_stations.size()) {
+        m_index = index;
+        m_changed = true;
+    }
 }
 
 bool StationListScreen::isSelected() const { return m_selected; }
@@ -244,6 +312,7 @@ void StationListScreen::resetSelected() { m_selected = false; }
 MenuScreen::MenuScreen() : m_index(0), m_interrupted(false), m_changed(true) {
     m_options.push_back("1. Manual Rescan");
     m_options.push_back("2. Back to Radio");
+    m_options.push_back("3. Exit");
 }
 
 void MenuScreen::draw(IDisplay& display) {
