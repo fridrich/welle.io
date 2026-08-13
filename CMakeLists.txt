@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 
 project(Welle.Io LANGUAGES C CXX)
 
+set(QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+
 file(READ "src/welle-gui/_current_version" VERSION_FILE)
 string(STRIP ${VERSION_FILE} CURRENT_VERSION)
 string(REGEX REPLACE " .*$" "" PROJECT_VERSION ${CURRENT_VERSION})
@@ -436,6 +438,11 @@ if(BUILD_WELLE_IO)
     else()
         qt_add_resources(welle_io_sources src/welle-gui/resources.qrc)
         qt_add_executable (${executableName} MANUAL_FINALIZATION ${welle_io_sources} ${EXTRA_MOCS})
+    endif()
+
+    set_target_properties(${executableName} PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN ${QT_QML_MODULE_NO_IMPORT_SCAN})
+    if(NOT QT_FEATURE_shared)
+        set_target_properties(${executableName} PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN FALSE)
     endif()
 
     if(ANDROID)
