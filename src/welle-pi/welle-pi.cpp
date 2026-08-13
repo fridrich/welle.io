@@ -447,9 +447,9 @@ struct options_t {
     string soapySDRDriverArgs = "";
     string antenna = "";
     int gain = -1;
-    string channel = "10B";
+    string channel = "";
     string iqsource = "";
-    string programme = "GRRIF";
+    string programme = "";
     string frontend = "auto";
     string frontend_args = "";
     string pcm = PCM_DEVICE;
@@ -969,20 +969,35 @@ int main(int argc, char **argv)
             // cout << "setting rtl_tcp host to '" << host << "', port to '" << atoi(port.c_str()) << "'" << endl;
         }
     }
-    auto freq = channels.getFrequency(options.channel);
+    ConfigManager config;
+    bool hasConfig = config.loadConfig();
+    auto stations = config.getStations();
+
+    std::string start_channel = options.channel;
+    if (start_channel.empty()) {
+        std::string last_ch = config.getLastPlayedChannel();
+        if (!last_ch.empty()) {
+            start_channel = last_ch;
+        } else if (!stations.empty()) {
+            auto sorted_stations = stations;
+            std::sort(sorted_stations.begin(), sorted_stations.end(), [](const ConfigManager::Station& a, const ConfigManager::Station& b) {
+                return a.program < b.program;
+            });
+            start_channel = sorted_stations[0].channel;
+        } else {
+            start_channel = "10B";
+        }
+    }
+    auto freq = channels.getFrequency(start_channel);
     in->setFrequency(freq);
 
     RadioReceiver rx(ri, *in, options.rro);
     AlsaProgrammeHandler ph(&lcdIS, options.pcm);
 
-    ConfigManager config;
-    bool hasConfig = config.loadConfig();
-
-    auto stations = config.getStations();
     int current_station_idx = -1;
 
     auto tuneToStationIndex = [&](int idx) {
-        if (idx < 0 || idx >= (int)stations.size()) return;
+        if (idx < 0 || idx >= (int)stations.size()) return false;
         current_station_idx = idx;
         const auto& st = stations[current_station_idx];
 
@@ -1012,6 +1027,7 @@ int main(int argc, char **argv)
             config.setLastPlayed(st.channel, st.service_id);
             config.saveConfig();
         }
+        return tuned;
     };
 
     auto menuScreen = make_shared<MenuScreen>();
@@ -1054,26 +1070,88 @@ int main(int argc, char **argv)
     }
 
     if (!stations.empty()) {
-        int start_idx = 0;
-        string last_ch = config.getLastPlayedChannel();
-        uint32_t last_id = config.getLastPlayedServiceId();
-        if (!options.programme.empty()) {
+        bool startup_tuned = false;
+
+        // 1. Try custom -c and -p override if both are specified (even if not in scanned list)
+        if (!options.channel.empty() && !options.programme.empty()) {
+            int custom_idx = -1;
             for (size_t i = 0; i < stations.size(); ++i) {
-                if (stations[i].program.find(options.programme) != string::npos) {
-                    start_idx = i;
+                if (stations[i].channel == options.channel &&
+                    stations[i].program.find(options.programme) != std::string::npos) {
+                    custom_idx = (int)i;
                     break;
                 }
             }
-        } else if (!last_ch.empty() && last_id != 0) {
-            for (size_t i = 0; i < stations.size(); ++i) {
-                if (stations[i].channel == last_ch && stations[i].service_id == last_id) {
-                    start_idx = i;
-                    break;
+            if (custom_idx == -1) {
+                // Add a temporary station to stations array to allow tuning
+                ConfigManager::Station temp_st;
+                temp_st.channel = options.channel;
+                temp_st.program = options.programme;
+                temp_st.short_program = options.programme.substr(0, 8);
+                temp_st.service_id = 0;
+                stations.push_back(temp_st);
+                custom_idx = (int)stations.size() - 1;
+            }
+
+            uiManager.setScreen(radioScreen);
+            startup_tuned = tuneToStationIndex(custom_idx);
+
+            if (startup_tuned) {
+                // Successfully tuned custom override! Resolve actual service_id to save in config
+                for (const auto& s : rx.getServiceList()) {
+                    if (s.serviceLabel.utf8_label().find(options.programme) != std::string::npos) {
+                        stations[custom_idx].service_id = s.serviceId;
+                        stations[custom_idx].program = s.serviceLabel.utf8_label();
+                        stations[custom_idx].short_program = s.serviceLabel.fig1_shortlabel_utf8();
+                        config.setLastPlayed(options.channel, s.serviceId);
+                        config.saveConfig();
+                        break;
+                    }
+                }
+            } else {
+                // Failed to tune to custom override. Revert any temporary station we added
+                if (custom_idx == (int)stations.size() - 1 && stations[custom_idx].service_id == 0) {
+                    stations.pop_back();
                 }
             }
         }
-        uiManager.setScreen(radioScreen);
-        tuneToStationIndex(start_idx);
+
+        // 2. Try last_played fallback
+        if (!startup_tuned) {
+            std::string last_ch = config.getLastPlayedChannel();
+            uint32_t last_id = config.getLastPlayedServiceId();
+            if (!last_ch.empty() && last_id != 0) {
+                int lp_idx = -1;
+                for (size_t i = 0; i < stations.size(); ++i) {
+                    if (stations[i].channel == last_ch && stations[i].service_id == last_id) {
+                        lp_idx = (int)i;
+                        break;
+                    }
+                }
+                if (lp_idx != -1) {
+                    uiManager.setScreen(radioScreen);
+                    startup_tuned = tuneToStationIndex(lp_idx);
+                }
+            }
+        }
+
+        // 3. Fallback to alphabetically-first station
+        if (!startup_tuned) {
+            auto sorted_stations = stations;
+            std::sort(sorted_stations.begin(), sorted_stations.end(), [](const ConfigManager::Station& a, const ConfigManager::Station& b) {
+                return a.program < b.program;
+            });
+            int first_idx = 0;
+            for (size_t i = 0; i < stations.size(); ++i) {
+                if (stations[i].channel == sorted_stations[0].channel &&
+                    stations[i].service_id == sorted_stations[0].service_id) {
+                    first_idx = (int)i;
+                    break;
+                }
+            }
+            uiManager.setScreen(radioScreen);
+            startup_tuned = tuneToStationIndex(first_idx);
+        }
     } else {
         cerr << "No stations found after scan." << endl;
         uiManager.setScreen(radioScreen);
