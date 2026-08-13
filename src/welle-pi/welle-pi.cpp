@@ -145,7 +145,16 @@ static void runGPIOPolling(InputQueue& queue) {
     }
 }
 
+#include <termios.h>
+
 static void runStdinReader(InputQueue& queue) {
+    struct termios oldt, newt;
+    if (tcgetattr(STDIN_FILENO, &oldt) == 0) {
+        newt = oldt;
+        newt.c_lflag &= ~(ICANON | ECHO);
+        tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    }
+
     while (!stop_requested()) {
         struct pollfd pfd;
         pfd.fd = STDIN_FILENO;
@@ -158,28 +167,29 @@ static void runStdinReader(InputQueue& queue) {
         }
         if (r == 0) continue;
 
-        string line;
-        if (!getline(cin, line)) break;
-        if (line == ".") {
+        char c;
+        if (read(STDIN_FILENO, &c, 1) != 1) break;
+
+        if (c == '.' || c == 'q') {
             queue.push(InputAction::QUIT);
             break;
-        }
-        if (line == "u" || line == "up") {
+        } else if (c == 'u') {
             queue.push(InputAction::UP);
-        } else if (line == "d" || line == "down") {
+        } else if (c == 'd') {
             queue.push(InputAction::DOWN);
-        } else if (line == "l" || line == "left") {
+        } else if (c == 'l') {
             queue.push(InputAction::LEFT);
-        } else if (line == "r" || line == "right") {
+        } else if (c == 'r') {
             queue.push(InputAction::RIGHT);
-        } else if (line == "e" || line == "enter") {
+        } else if (c == 'e' || c == '\n' || c == '\r') {
             queue.push(InputAction::ENTER);
-        } else if (line == "m" || line == "menu") {
+        } else if (c == 'm') {
             queue.push(InputAction::MENU);
-        } else if (line == "q" || line == "quit") {
-            queue.push(InputAction::QUIT);
-            break;
         }
+    }
+
+    if (tcgetattr(STDIN_FILENO, &newt) == 0) {
+        tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
     }
 }
 
@@ -768,6 +778,7 @@ static bool tune_to_service(RadioReceiver& rx, AlsaProgrammeHandler& ph,
             else {
                 service_selected = true;
                 lcdIS.setProgramName(s.serviceLabel.utf8_label(), s.serviceLabel.fig1_shortlabel_utf8());
+                break;
             }
         }
     }
@@ -992,10 +1003,8 @@ int main(int argc, char **argv)
             sync_wait--;
         }
 
-        int service_wait = 50;
-        while (rx.getServiceList().empty() && service_wait > 0 && !stop_requested()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            service_wait--;
+        if (ri.synced) {
+            wait_for_complete_ensemble(rx, stop_requested);
         }
 
         bool tuned = tune_to_service(rx, ph, *radioScreen, st.program, st.service_id);
