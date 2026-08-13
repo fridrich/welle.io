@@ -143,6 +143,7 @@ int main() {
     // Test 3: popScreen
     std::cout << "Test 3: Pop Screen" << std::endl;
     bool popped = ui.popScreen();
+    (void)popped;
     assert(popped == true);
     assert(UIManagerTestHelper::getStackSize(ui) == 1);
     assert(UIManagerTestHelper::getTopScreen(ui) == root);
@@ -155,6 +156,7 @@ int main() {
     // Test 4: Cannot pop root screen
     std::cout << "Test 4: Cannot pop root screen" << std::endl;
     popped = ui.popScreen();
+    (void)popped;
     assert(popped == false);
     assert(UIManagerTestHelper::getStackSize(ui) == 1);
     assert(UIManagerTestHelper::getTopScreen(ui) == root);
