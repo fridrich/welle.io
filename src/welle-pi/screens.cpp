@@ -131,7 +131,7 @@ void RadioScreen::draw(IDisplay& display) {
             display.gotoXY(0,0);
             
             std::string pToDraw = programName;
-            if (display.getWidth() && pToDraw.length() > (size_t)display.getWidth() && !shortProgramName.empty()) {
+            if (display.hasDisplay() && pToDraw.length() > (size_t)display.getWidth() && !shortProgramName.empty()) {
                 pToDraw = shortProgramName;
             }
 
@@ -195,6 +195,8 @@ void StationListScreen::draw(IDisplay& display) {
         if (m_changed.compare_exchange_strong(expected, false)) {
             display.clear();
             
+            bool debugging = !display.hasDisplay();
+
             int width = display.getWidth();
             if (width == 0) width = 40; // We are debugging and only the debug output is interesting
             if (width < 4) width = 16; // fallback safety
@@ -230,7 +232,10 @@ void StationListScreen::draw(IDisplay& display) {
                     
                     if (offset == 0) {
                         // This is the active/focused station
-                        if (width < 16) {
+                        if (debugging) {
+                            std::string wrapped = ">" + prog + "<";
+                            display.write(wrapped.c_str());
+                        } else if (width < 16) {
                             if (!m_stations[item_index].short_program.empty()) {
                                 prog = m_stations[item_index].short_program;
                             }
