@@ -79,33 +79,32 @@ private:
     std::function<void(InputAction)> m_inputCallback;
 };
 
+class UIManager;
+
 class StationListScreen : public UIScreen {
 public:
-    StationListScreen(const std::vector<ConfigManager::Station>& stations);
+    StationListScreen(const std::vector<ConfigManager::Station>& stations, UIManager* uiManager);
     void draw(IDisplay& display) override;
     void interrupt() override;
     void handleInput(InputAction action) override;
     void setSelectCallback(std::function<void(const ConfigManager::Station&)> cb);
-    void setCancelCallback(std::function<void()> cb);
     void setIndex(size_t index);
     bool isSelected() const;
     void resetSelected();
 
 private:
-    static constexpr uint64_t INACTIVITY_TIMEOUT_MS = 10000; // 10 seconds auto-exit
     std::vector<ConfigManager::Station> m_stations;
+    UIManager* m_uiManager;
     size_t m_index;
     std::atomic<bool> m_interrupted;
     std::atomic<bool> m_changed;
     bool m_selected;
-    std::atomic<uint64_t> m_lastInputTime;
     std::function<void(const ConfigManager::Station&)> m_selectCallback;
-    std::function<void()> m_cancelCallback;
 };
 
 class MenuScreen : public UIScreen {
 public:
-    MenuScreen();
+    MenuScreen(UIManager* uiManager);
     void draw(IDisplay& display) override;
     void interrupt() override;
     void handleInput(InputAction action) override;
@@ -113,6 +112,7 @@ public:
 
 private:
     std::vector<std::string> m_options;
+    UIManager* m_uiManager;
     size_t m_index;
     std::atomic<bool> m_interrupted;
     std::atomic<bool> m_changed;

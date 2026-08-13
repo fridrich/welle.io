@@ -34,6 +34,20 @@ public:
     virtual void draw(IDisplay& display) = 0;
     virtual void interrupt() = 0;
     virtual void handleInput(InputAction action) = 0;
+
+    /* --- NEW LIFECYCLE HOOKS --- */
+    
+    // Called when pushed to the top of the stack (first activation)
+    virtual void onPush() {}
+    
+    // Called when popped off the stack (destruction)
+    virtual void onPop() { interrupt(); }
+    
+    // Called when a child screen is pushed over this screen (suspended)
+    virtual void onPause() { interrupt(); }
+    
+    // Called when a child screen is popped, returning focus to this screen
+    virtual void onResume() {}
 };
 
 #endif // UI_SCREEN_HPP

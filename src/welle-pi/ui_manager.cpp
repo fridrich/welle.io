@@ -24,22 +24,24 @@
  */
 #include "ui_manager.hpp"
 #include "lcd_display_adapter.hpp"
+#include "utils.hpp"
 
 UIManager::UIManager() : UIManager(std::make_unique<LCDDisplayAdapter>()) {}
 
 UIManager::UIManager(std::unique_ptr<IDisplay> display)
-    : m_display(std::move(display)), m_exit(false), m_screenChanged(false)
+    : m_display(std::move(display)), m_exit(false), m_screenChanged(false), m_lastInputTime(now_ms())
 {
     m_display->backlightOn();
     m_thread = std::thread(&UIManager::run, this);
+    m_watchdogThread = std::thread(&UIManager::watchdogRun, this);
 }
 
 UIManager::~UIManager() {
     m_exit = true;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_currentScreen) {
-            m_currentScreen->interrupt();
+        if (!m_historyStack.empty()) {
+            m_historyStack.back()->interrupt();
         }
     }
     m_display->interrupt();
@@ -47,16 +49,80 @@ UIManager::~UIManager() {
     if (m_thread.joinable()) {
         m_thread.join();
     }
+    if (m_watchdogThread.joinable()) {
+        m_watchdogThread.join();
+    }
     m_display->clear();
 }
 
 void UIManager::setScreen(std::shared_ptr<UIScreen> newScreen) {
+    resetToRoot(newScreen);
+}
+
+void UIManager::pushScreen(std::shared_ptr<UIScreen> screen) {
+    if (!screen) return;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_currentScreen) {
-            m_currentScreen->interrupt();
+        m_lastInputTime = now_ms();
+        if (!m_historyStack.empty()) {
+            m_historyStack.back()->onPause();
         }
-        m_currentScreen = newScreen;
+        m_historyStack.push_back(screen);
+        screen->onPush();
+        m_screenChanged = true;
+    }
+    m_display->interrupt();
+    m_cond.notify_one();
+}
+
+bool UIManager::popScreen() {
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_lastInputTime = now_ms();
+        if (m_historyStack.size() <= 1) {
+            return false;
+        }
+        m_historyStack.back()->onPop();
+        m_historyStack.pop_back();
+        if (!m_historyStack.empty()) {
+            m_historyStack.back()->onResume();
+        }
+        m_screenChanged = true;
+    }
+    m_display->interrupt();
+    m_cond.notify_one();
+    return true;
+}
+
+void UIManager::resetToRoot(std::shared_ptr<UIScreen> rootScreen) {
+    if (!rootScreen) return;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_lastInputTime = now_ms();
+        while (!m_historyStack.empty()) {
+            m_historyStack.back()->onPop();
+            m_historyStack.pop_back();
+        }
+        m_historyStack.push_back(rootScreen);
+        rootScreen->onPush();
+        m_screenChanged = true;
+    }
+    m_display->interrupt();
+    m_cond.notify_one();
+}
+
+void UIManager::resetToRoot() {
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_lastInputTime = now_ms();
+        if (m_historyStack.size() <= 1) {
+            return;
+        }
+        while (m_historyStack.size() > 1) {
+            m_historyStack.back()->onPop();
+            m_historyStack.pop_back();
+        }
+        m_historyStack.back()->onResume();
         m_screenChanged = true;
     }
     m_display->interrupt();
@@ -67,7 +133,8 @@ void UIManager::processInput(InputAction action) {
     std::shared_ptr<UIScreen> screen;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        screen = m_currentScreen;
+        m_lastInputTime = now_ms();
+        screen = m_historyStack.empty() ? nullptr : m_historyStack.back();
     }
     if (screen) {
         screen->handleInput(action);
@@ -83,11 +150,29 @@ void UIManager::run() {
             std::unique_lock<std::mutex> lock(m_mutex);
             m_cond.wait(lock, [this]() { return m_exit || m_screenChanged; });
             if (m_exit) break;
-            screen = m_currentScreen;
+            screen = m_historyStack.empty() ? nullptr : m_historyStack.back();
             m_screenChanged = false;
         }
         if (screen) {
             screen->draw(*m_display);
+        }
+    }
+}
+
+void UIManager::watchdogRun() {
+    while (!m_exit) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        if (m_exit) break;
+
+        bool shouldReset = false;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_historyStack.size() > 1 && (now_ms() - m_lastInputTime > 10000)) {
+                shouldReset = true;
+            }
+        }
+        if (shouldReset) {
+            resetToRoot();
         }
     }
 }

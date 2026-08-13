@@ -32,27 +32,43 @@
 #include <condition_variable>
 #include <thread>
 #include <atomic>
+#include <vector>
 
 class UIManager {
+    friend struct UIManagerTestHelper;
 public:
     UIManager();
     UIManager(std::unique_ptr<IDisplay> display);
     ~UIManager();
 
     void setScreen(std::shared_ptr<UIScreen> newScreen);
+    
+    // Pushes a new screen onto the stack, pausing the previous top
+    void pushScreen(std::shared_ptr<UIScreen> screen);
+
+    // Pops the top screen, resuming the screen below it. Returns false if stack is empty.
+    bool popScreen();
+
+    // Clears the history stack and resets back to the root
+    void resetToRoot(std::shared_ptr<UIScreen> rootScreen);
+    void resetToRoot();
+
     void processInput(InputAction action);
     IDisplay& getDisplay();
 
 private:
     void run();
+    void watchdogRun();
 
     std::unique_ptr<IDisplay> m_display;
-    std::shared_ptr<UIScreen> m_currentScreen;
+    std::vector<std::shared_ptr<UIScreen>> m_historyStack;
     std::atomic<bool> m_exit;
     std::atomic<bool> m_screenChanged;
+    std::atomic<uint64_t> m_lastInputTime;
     std::mutex m_mutex;
     std::condition_variable m_cond;
     std::thread m_thread;
+    std::thread m_watchdogThread;
 };
 
 #endif // UI_MANAGER_HPP

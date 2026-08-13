@@ -820,7 +820,7 @@ static bool tune_to_service(RadioReceiver& rx, AlsaProgrammeHandler& ph,
 
 static void runAutoScanner(RadioReceiver& rx, CVirtualInput* in, RadioInterface& ri, Channels& channels, ConfigManager& config, UIManager& uiManager) {
     auto scanningScreen = make_shared<ScanningScreen>();
-    uiManager.setScreen(scanningScreen);
+    uiManager.resetToRoot(scanningScreen);
 
     const std::vector<std::string> SCAN_CHANNELS = {
         "5A", "5B", "5C", "5D",
@@ -935,7 +935,7 @@ int main(int argc, char **argv)
 
     UIManager uiManager;
     auto radioScreen = make_shared<RadioScreen>();
-    uiManager.setScreen(radioScreen);
+    uiManager.resetToRoot(radioScreen);
     auto& lcdIS = *radioScreen;
 
     RadioInterface ri(&lcdIS);
@@ -1064,12 +1064,12 @@ int main(int argc, char **argv)
         return tuned;
     };
 
-    auto menuScreen = make_shared<MenuScreen>();
+    auto menuScreen = make_shared<MenuScreen>(&uiManager);
 
     radioScreen->setInputCallback([&](InputAction action) {
         if (action == InputAction::UP || action == InputAction::DOWN) {
             if (!stations.empty()) {
-                auto stationListScreen = make_shared<StationListScreen>(stations);
+                auto stationListScreen = make_shared<StationListScreen>(stations, &uiManager);
                 stationListScreen->setIndex(current_station_idx >= 0 ? current_station_idx : 0);
 
                 if (action == InputAction::UP) {
@@ -1081,22 +1081,18 @@ int main(int argc, char **argv)
                 stationListScreen->setSelectCallback([&](const ConfigManager::Station& st) {
                     for (size_t i = 0; i < stations.size(); ++i) {
                         if (stations[i].channel == st.channel && stations[i].service_id == st.service_id) {
-                            uiManager.setScreen(radioScreen);
+                            uiManager.popScreen();
                             tuneToStationIndex((int)i);
                             return;
                         }
                     }
-                    uiManager.setScreen(radioScreen);
+                    uiManager.popScreen();
                 });
 
-                stationListScreen->setCancelCallback([&]() {
-                    uiManager.setScreen(radioScreen);
-                });
-
-                uiManager.setScreen(stationListScreen);
+                uiManager.pushScreen(stationListScreen);
             }
         } else if (action == InputAction::MENU || action == InputAction::ENTER) {
-            uiManager.setScreen(menuScreen);
+            uiManager.pushScreen(menuScreen);
         }
     });
 
@@ -1105,13 +1101,13 @@ int main(int argc, char **argv)
             runAutoScanner(rx, in.get(), ri, channels, config, uiManager);
             load_and_sort_stations();
             if (!stations.empty()) {
-                uiManager.setScreen(radioScreen);
+                uiManager.resetToRoot(radioScreen);
                 tuneToStationIndex(0);
             } else {
-                uiManager.setScreen(radioScreen);
+                uiManager.resetToRoot(radioScreen);
             }
         } else if (optionIdx == 1) {
-            uiManager.setScreen(radioScreen);
+            uiManager.popScreen();
         } else if (optionIdx == 2) {
             inputQueue.push(InputAction::QUIT);
         }
@@ -1147,7 +1143,7 @@ int main(int argc, char **argv)
                 custom_idx = (int)stations.size() - 1;
             }
 
-            uiManager.setScreen(radioScreen);
+            uiManager.resetToRoot(radioScreen);
             startup_tuned = tuneToStationIndex(custom_idx);
 
             if (startup_tuned) {
@@ -1183,7 +1179,7 @@ int main(int argc, char **argv)
                     }
                 }
                 if (lp_idx != -1) {
-                    uiManager.setScreen(radioScreen);
+                    uiManager.resetToRoot(radioScreen);
                     startup_tuned = tuneToStationIndex(lp_idx);
                 }
             }
@@ -1191,12 +1187,12 @@ int main(int argc, char **argv)
 
         // 3. Fallback to alphabetically-first station
         if (!startup_tuned) {
-            uiManager.setScreen(radioScreen);
+            uiManager.resetToRoot(radioScreen);
             startup_tuned = tuneToStationIndex(0);
         }
     } else {
         cerr << "No stations found after scan." << endl;
-        uiManager.setScreen(radioScreen);
+        uiManager.resetToRoot(radioScreen);
     }
 
     thread gpioThread(runGPIOPolling, ref(inputQueue));

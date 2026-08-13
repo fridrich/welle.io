@@ -601,6 +601,19 @@ if (BUILD_WELLE_PI)
         ${LIBLCD_LIBRARIES}
         Threads::Threads
     )
+
+    add_executable(navigation_tests
+        src/tests/navigation_tests.cpp
+        src/welle-pi/ui_manager.cpp
+        src/welle-pi/lcd_display_adapter.cpp
+    )
+    target_include_directories(navigation_tests PRIVATE
+        src/welle-pi
+    )
+    target_link_libraries(navigation_tests
+        ${LIBLCD_LIBRARIES}
+        Threads::Threads
+    )
     if(UNIX AND NOT APPLE OR NOT WITH_APP_BUNDLE)
         INSTALL (TARGETS ${piExecutableName} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     endif()
