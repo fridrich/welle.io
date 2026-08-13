@@ -38,6 +38,7 @@ void ScanningScreen::setScanningStatus(const std::string& channel, int foundCoun
 
 void ScanningScreen::draw(IDisplay& display) {
     m_interrupted = false;
+    m_changed = true; // Force redraw on screen transition
     while (!m_interrupted) {
         bool expected = true;
         if (m_changed.compare_exchange_strong(expected, false)) {
@@ -114,6 +115,7 @@ bool RadioScreen::signalLost() const {
 
 void RadioScreen::draw(IDisplay& display) {
     m_interrupted = false;
+    m_changed = true; // Force redraw on screen transition
     while (!m_interrupted) {
         bool expected = true;
         if (m_changed.compare_exchange_strong(expected, false)) {
@@ -317,6 +319,7 @@ MenuScreen::MenuScreen() : m_index(0), m_interrupted(false), m_changed(true) {
 
 void MenuScreen::draw(IDisplay& display) {
     m_interrupted = false;
+    m_changed = true; // Force redraw on screen transition
     while (!m_interrupted) {
         bool expected = true;
         if (m_changed.compare_exchange_strong(expected, false)) {
