@@ -40,6 +40,10 @@
 #include "rtl_tcp.h"
 #include "raw_file.h"
 
+#ifdef HAVE_DABBOARD
+#include "si4688_input.h"
+#endif
+
 #ifdef HAVE_RTLSDR
 #include "rtl_sdr.h"
 #endif
@@ -111,6 +115,9 @@ CVirtualInput *CInputFactory::GetDevice(RadioControllerInterface &radioControlle
         case CDeviceID::ANDROID_RTL_SDR: InputDevice = new CAndroid_RTL_SDR(radioController); break;
 #endif
         case CDeviceID::NULLDEVICE: InputDevice = new CNullDevice(); break;
+#ifdef HAVE_DABBOARD
+        case CDeviceID::DABBOARD: InputDevice = new CSi4688Input(radioController); break;
+#endif
         default: throw std::runtime_error("unknown device ID " + std::string(__FILE__) +":"+ std::to_string(__LINE__));
         }
     }
@@ -200,6 +207,10 @@ CVirtualInput* CInputFactory::GetManualDevice(RadioControllerInterface& radioCon
 #endif
         if (device == "rawfile")
             InputDevice = new CRAWFile(radioController);
+#ifdef HAVE_DABBOARD
+        else if (device == "dabboard" || device == "si4688")
+            InputDevice = new CSi4688Input(radioController);
+#endif
         else
             std::clog << "InputFactory:"
                 "Unknown device \"" << device << "\"." << std::endl;

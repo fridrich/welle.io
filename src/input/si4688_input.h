@@ -1,0 +1,81 @@
+/*
+ *    Copyright (C) 2026
+ *    Silicon Labs Si4688 DABBoard Input Backend for welle.io
+ */
+
+#ifndef CSI4688INPUT_H
+#define CSI4688INPUT_H
+
+#include <vector>
+#include <string>
+#include <atomic>
+#include <thread>
+#include "virtual_input.h"
+#include "dab-constants.h"
+#include "radio-controller.h"
+#include "MathHelper.h"
+
+#ifdef QT_CORE_LIB
+#include <QObject>
+#include <QAudioSource>
+#include <QAudioSink>
+#include <QAudioFormat>
+#include <QAudioDevice>
+#include <QMediaDevices>
+#include <QIODevice>
+#endif
+
+class CSi4688Input : public CVirtualInput
+#ifdef QT_CORE_LIB
+, public QObject
+#endif
+{
+#ifdef QT_CORE_LIB
+    Q_OBJECT
+#endif
+public:
+    CSi4688Input(RadioControllerInterface& radioController);
+    ~CSi4688Input(void);
+
+    // Interface methods
+    bool restart(void) override;
+    bool is_ok(void) override;
+    void stop(void) override;
+    void reset(void) override;
+    int32_t getSamples(DSPCOMPLEX *buffer, int32_t size) override;
+    std::vector<DSPCOMPLEX> getSpectrumSamples(int size) override;
+    int32_t getSamplesToRead(void) override;
+    void setFrequency(int Frequency) override;
+    int getFrequency(void) const override;
+    float getGain(void) const override;
+    float setGain(int gain_index) override;
+    int getGainCount(void) override;
+    void setAgc(bool AGC) override;
+    std::string getDescription(void) override;
+
+    CDeviceID getID(void) override;
+
+private:
+    RadioControllerInterface& radioController;
+    int frequency = kHz(174928);
+    std::atomic<bool> isDeviceOk{true};
+    std::atomic<bool> isRunning{false};
+
+    // ALSA audio capture thread (for CLI / non-Qt)
+#ifdef HAVE_ALSA
+    std::thread alsaCaptureThread;
+    void alsaCaptureLoop();
+#endif
+
+    // Qt Multimedia audio capture (for GUI)
+#ifdef QT_CORE_LIB
+    QAudioSource* qtAudioSource = nullptr;
+    QAudioSink* qtAudioSink = nullptr;
+    QIODevice* qtAudioDevice = nullptr;
+    QIODevice* qtPlaybackDevice = nullptr;
+    void startQtCapture();
+    void stopQtCapture();
+#endif
+};
+
+#endif // CSI4688INPUT_H
