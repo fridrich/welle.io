@@ -168,10 +168,20 @@ void CSi4688Input::playService(const std::string& name)
 {
     if (!isDeviceOk) return;
 
-    // Query on-chip service database
+    // Query on-chip service database with retries to allow FIC sync and decode
     si468x_service_t services[32];
-    std::memset(services, 0, sizeof(services));
-    int num_services = si468x_get_service_list(services, 32);
+    int num_services = 0;
+
+    for (int retry = 0; retry < 6; retry++) {
+        std::memset(services, 0, sizeof(services));
+        num_services = si468x_get_service_list(services, 32);
+        if (num_services > 0) {
+            break;
+        }
+        std::clog << "Si4688Input: Waiting for ensemble sync & FIC database decoding (retry "
+                  << (retry + 1) << "/6)..." << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(800));
+    }
 
     if (num_services > 0) {
         int service_to_play = 0; // Default to first available service
