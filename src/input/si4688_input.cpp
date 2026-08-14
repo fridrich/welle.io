@@ -11,6 +11,7 @@
 #include <si468x.h>
 #include "si4688_input.h"
 #include "charsets.h"
+#include <algorithm>
 
 CSi4688Input::CSi4688Input(RadioControllerInterface& rc)
     : radioController(rc)
