@@ -13,7 +13,7 @@ CSi4688Input::CSi4688Input(RadioControllerInterface& rc)
     std::clog << "Si4688Input: Connecting to libsi468x..." << std::endl;
 
     // Initialize physical board via libsi468x C-API
-    int ret = si468x_init("/dev/spidev0.0", 16, SI468X_BOOT_DAB);
+    int ret = si468x_init("/dev/spidev0.0", 23, SI468X_BOOT_DAB);
     if (ret == SI468X_SUCCESS) {
         std::clog << "Si4688Input: Successfully initialized hardware board!" << std::endl;
         isDeviceOk = true;
@@ -34,7 +34,7 @@ bool CSi4688Input::restart()
 {
     stop();
 
-    int ret = si468x_init("/dev/spidev0.0", 16, SI468X_BOOT_DAB);
+    int ret = si468x_init("/dev/spidev0.0", 23, SI468X_BOOT_DAB);
     if (ret == SI468X_SUCCESS) {
         isDeviceOk = true;
         isRunning = true;
