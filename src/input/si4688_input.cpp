@@ -121,8 +121,7 @@ void CSi4688Input::setFrequency(int freq)
     if (isDeviceOk) {
         si468x_set_frequency(frequency);
 
-        // Wait for tuner lock and trigger default auto-play of the first service
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        // Trigger default auto-play of the first service (tuning handles delays)
         playService("");
     }
 }
@@ -187,8 +186,10 @@ void CSi4688Input::playService(const std::string& name)
         int service_to_play = 0; // Default to first available service
         if (!name.empty()) {
             for (int s = 0; s < num_services; s++) {
-                if (std::string(services[s].label) == name ||
-                    std::string(services[s].short_label) == name) {
+                std::string s_label = services[s].label;
+                std::string s_short = services[s].short_label;
+                if (s_label.find(name) != std::string::npos ||
+                    s_short.find(name) != std::string::npos) {
                     service_to_play = s;
                     break;
                 }
