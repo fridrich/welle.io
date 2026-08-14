@@ -25,10 +25,11 @@
 #include <QIODevice>
 #endif
 
-class CSi4688Input : public CVirtualInput
+class CSi4688Input : 
 #ifdef QT_CORE_LIB
-, public QObject
+    public QObject,
 #endif
+    public CVirtualInput
 {
 #ifdef QT_CORE_LIB
     Q_OBJECT
@@ -61,8 +62,8 @@ private:
     std::atomic<bool> isDeviceOk{true};
     std::atomic<bool> isRunning{false};
 
-    // ALSA audio capture thread (for CLI / non-Qt)
-#ifdef HAVE_ALSA
+    // ALSA audio capture thread (for CLI / non-Qt only)
+#if defined(HAVE_ALSA) && !defined(QT_CORE_LIB)
     std::thread alsaCaptureThread;
     void alsaCaptureLoop();
 #endif
