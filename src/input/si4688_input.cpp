@@ -4,14 +4,25 @@
  */
 
 #include <iostream>
+#include <si468x.h>
 #include "si4688_input.h"
 
 CSi4688Input::CSi4688Input(RadioControllerInterface& rc)
     : radioController(rc)
 {
-    std::clog << "Si4688Input: Initializing Silicon Labs Si4688 DABBoard backend..." << std::endl;
-    isRunning = true;
-    isDeviceOk = true;
+    std::clog << "Si4688Input: Connecting to libsi468x..." << std::endl;
+
+    // Initialize physical board via libsi468x C-API
+    int ret = si468x_init("/dev/spidev0.0", 16, SI468X_BOOT_DAB);
+    if (ret == SI468X_SUCCESS) {
+        std::clog << "Si4688Input: Successfully initialized hardware board!" << std::endl;
+        isDeviceOk = true;
+        isRunning = true;
+    } else {
+        std::cerr << "Si4688Input: Hardware board initialization failed (code: " << ret << ")" << std::endl;
+        isDeviceOk = false;
+        isRunning = false;
+    }
 }
 
 CSi4688Input::~CSi4688Input()
@@ -22,8 +33,14 @@ CSi4688Input::~CSi4688Input()
 bool CSi4688Input::restart()
 {
     stop();
-    isRunning = true;
-    return true;
+
+    int ret = si468x_init("/dev/spidev0.0", 16, SI468X_BOOT_DAB);
+    if (ret == SI468X_SUCCESS) {
+        isDeviceOk = true;
+        isRunning = true;
+        return true;
+    }
+    return false;
 }
 
 bool CSi4688Input::is_ok()
@@ -35,13 +52,14 @@ void CSi4688Input::stop()
 {
     if (isRunning) {
         isRunning = false;
-        std::clog << "Si4688Input: Stopping backend..." << std::endl;
+        std::clog << "Si4688Input: Releasing hardware..." << std::endl;
+        si468x_shutdown();
     }
 }
 
 void CSi4688Input::reset()
 {
-    // Mock reset
+    restart();
 }
 
 int32_t CSi4688Input::getSamples(DSPCOMPLEX *buffer, int32_t size)
@@ -50,6 +68,20 @@ int32_t CSi4688Input::getSamples(DSPCOMPLEX *buffer, int32_t size)
     for (int i = 0; i < size; i++) {
         buffer[i] = DSPCOMPLEX(0.0f, 0.0f);
     }
+
+    // Periodically poll the chip's live signal quality (RSSI, SNR)
+    // and invoke welle.io's onSNR callback to dynamically update GUI and CLI signal meters!
+    if (isDeviceOk) {
+        static int status_poll_cnt = 0;
+        if (status_poll_cnt++ % 8 == 0) { // Poll periodically to avoid bus saturation
+            si468x_signal_status_t sig_status;
+            if (si468x_get_signal_status(&sig_status) == SI468X_SUCCESS) {
+                // Pass real hardware SNR directly to welle.io controller
+                radioController.onSNR(sig_status.snr);
+            }
+        }
+    }
+
     return size;
 }
 
@@ -68,6 +100,9 @@ void CSi4688Input::setFrequency(int freq)
 {
     frequency = freq;
     std::clog << "Si4688Input: Tuning hardware to frequency: " << frequency << " Hz" << std::endl;
+    if (isDeviceOk) {
+        si468x_set_frequency(frequency);
+    }
 }
 
 int CSi4688Input::getFrequency() const
@@ -98,7 +133,7 @@ void CSi4688Input::setAgc(bool AGC)
 
 std::string CSi4688Input::getDescription()
 {
-    return "Silicon Labs Si4688 DABBoard Hardware Receiver";
+    return "Silicon Labs Si4688 DABBoard Hardware Receiver via libsi468x";
 }
 
 CDeviceID CSi4688Input::getID()

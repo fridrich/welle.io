@@ -151,7 +151,7 @@ HEADERS += \
     $$PWD/input/raw_file.h \
     $$PWD/input/virtual_input.h \
     $$PWD/input/rtl_tcp.h
-	
+
 SOURCES += \
     $$PWD/backend/dab-audio.cpp \
     $$PWD/backend/dab_decoder.cpp \
@@ -350,5 +350,6 @@ dabboard {
     DEFINES    += HAVE_DABBOARD
     HEADERS    += $$PWD/input/si4688_input.h
     SOURCES    += $$PWD/input/si4688_input.cpp
-    LIBS       += -lasound
+    CONFIG     += link_pkgconfig
+    PKGCONFIG  += libsi468x
 }
