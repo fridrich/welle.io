@@ -79,6 +79,7 @@ ColumnLayout {
             case 4: deviceBox.currentIndex = 2; break; // RTL_SDR
             case 5: deviceBox.currentIndex = 4; break; // RTL_TCP
             case 6: deviceBox.currentIndex = 3; break; // SOAPYSDR
+            case 9: deviceBox.currentIndex = 6; break; // DABBOARD
             default: deviceBox.currentIndex = 0;
             }
         }
@@ -152,6 +153,7 @@ ColumnLayout {
                     ListElement { label: QT_TRANSLATE_NOOP("Settings", "SoapySDR") }
                     ListElement { label: QT_TRANSLATE_NOOP("Settings", "rtl-tcp") }
                     ListElement { label: QT_TRANSLATE_NOOP("Settings", "RAW file") }
+                    ListElement { label: QT_TRANSLATE_NOOP("Settings", "DABBoard (Si4688)") }
                 }
 
                 onCurrentIndexChanged: {
@@ -162,6 +164,7 @@ ColumnLayout {
                     case 3: sdrSpecificSettings.source = "qrc:/QML/settings/devices/SoapySDRSettings.qml"; break
                     case 4: sdrSpecificSettings.source = "qrc:/QML/settings/devices/RTLTCPSettings.qml"; break
                     case 5: sdrSpecificSettings.source = "qrc:/QML/settings/devices/RawFileSettings.qml"; break
+                    case 6: sdrSpecificSettings.source = "qrc:/QML/settings/devices/DABBoardSettings.qml"; break
                     default: sdrSpecificSettings.source = "qrc:/QML/settings/devices/NullSettings.qml"; break
                     }
 
