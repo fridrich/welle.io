@@ -578,6 +578,9 @@ if(BUILD_WELLE_CLI AND NOT ANDROID)
       ${FLACPP_LIBRARIES}
       Threads::Threads
     )
+    if(DABBOARD)
+        target_link_libraries (${cliExecutableName} PRIVATE ${SI468X_LIBRARIES})
+    endif()
 
     find_program(RESOURCE_COMPILER xxd)
     add_custom_command(
