@@ -350,7 +350,9 @@ endif()
 
 if(DABBOARD)
     add_definitions (-DHAVE_DABBOARD)
-    set(input_sources  ${input_sources} src/input/si4688_input.cpp)
+    list(APPEND welle_io_sources src/input/si4688_input.cpp)
+    list(APPEND welle_cli_sources src/input/si4688_input.cpp)
+    list(APPEND welle_pi_sources src/input/si4688_input.cpp)
 endif()
 
 if(SoapySDR_FOUND)
@@ -430,9 +432,7 @@ target_link_libraries(welle PRIVATE
       ${MPG123_LIBRARIES}
 )
 
-if (DABBOARD)
-    target_link_libraries(welle PRIVATE ${ALSA_LIBRARIES})
-endif()
+
 
 if (NOT LIBWELLE_STATIC)
 install(TARGETS welle

@@ -6,23 +6,26 @@
 #include <iostream>
 #include "si4688_input.h"
 
-#ifdef HAVE_ALSA
+#if defined(HAVE_ALSA) && !defined(QT_CORE_LIB)
 #include <alsa/asoundlib.h>
 #endif
 
 CSi4688Input::CSi4688Input(RadioControllerInterface& rc)
+#ifdef QT_CORE_LIB
+    : QObject(),
+      radioController(rc)
+#else
     : radioController(rc)
+#endif
 {
     std::clog << "Si4688Input: Initializing Silicon Labs Si4688 DABBoard backend..." << std::endl;
     
     isRunning = true;
     isDeviceOk = true;
 
-#ifdef HAVE_ALSA
+#if defined(HAVE_ALSA) && !defined(QT_CORE_LIB)
     // If not in Qt (e.g. welle-cli/welle-pi), start ALSA thread
-#ifndef QT_CORE_LIB
     alsaCaptureThread = std::thread(&CSi4688Input::alsaCaptureLoop, this);
-#endif
 #endif
 
 #ifdef QT_CORE_LIB
@@ -54,7 +57,7 @@ void CSi4688Input::stop()
         isRunning = false;
         std::clog << "Si4688Input: Stopping backend..." << std::endl;
         
-#ifdef HAVE_ALSA
+#if defined(HAVE_ALSA) && !defined(QT_CORE_LIB)
         if (alsaCaptureThread.joinable()) {
             alsaCaptureThread.join();
         }
@@ -133,7 +136,7 @@ CDeviceID CSi4688Input::getID()
     return CDeviceID::DABBOARD;
 }
 
-#ifdef HAVE_ALSA
+#if defined(HAVE_ALSA) && !defined(QT_CORE_LIB)
 void CSi4688Input::alsaCaptureLoop()
 {
     std::clog << "Si4688Input: Starting native ALSA capture-to-playback loop..." << std::endl;
