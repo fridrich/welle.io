@@ -208,6 +208,9 @@ void CSi4688Input::playService(const std::string& name)
                   << ", CompId: " << std::dec << services[service_to_play].component_id << ")" << std::endl;
 
         si468x_play_service(services[service_to_play].service_id, services[service_to_play].component_id);
+
+        // Explicitly set co-processor hardware volume to 55 to un-mute the audio DAC!
+        si468x_set_volume(55);
     } else {
         std::cerr << "Si4688Input: No active services found on tuned frequency!" << std::endl;
     }
