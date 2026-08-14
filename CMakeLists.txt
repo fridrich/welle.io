@@ -350,6 +350,10 @@ endif()
 
 if(DABBOARD)
     add_definitions (-DHAVE_DABBOARD)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SI468X REQUIRED libsi468x)
+    include_directories(${SI468X_INCLUDE_DIRS} /home/fstrba/reverse-enginner/libsi468x/include)
+    link_directories(${SI468X_LIBRARY_DIRS} /home/fstrba/reverse-enginner/libsi468x/src/.libs)
     set(input_sources  ${input_sources} src/input/si4688_input.cpp)
 endif()
 
@@ -431,6 +435,10 @@ target_link_libraries(welle PRIVATE
 )
 
 
+
+if (DABBOARD)
+    target_link_libraries(welle PRIVATE ${SI468X_LIBRARIES})
+endif()
 
 if (NOT LIBWELLE_STATIC)
 install(TARGETS welle

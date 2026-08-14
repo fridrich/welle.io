@@ -41,7 +41,7 @@ public:
 private:
     RadioControllerInterface& radioController;
     int frequency = kHz(174928);
-    std::atomic<bool> isDeviceOk{true};
+    std::atomic<bool> isDeviceOk{false};
     std::atomic<bool> isRunning{false};
 };
 
