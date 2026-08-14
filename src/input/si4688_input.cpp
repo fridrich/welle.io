@@ -25,12 +25,7 @@ CSi4688Input::CSi4688Input(RadioControllerInterface& rc)
         isDeviceOk = true;
         isRunning = true;
 
-        // Runtime check for Analog headphone jack routing
-        const char* env_analog = std::getenv("DABBOARD_ANALOG");
-        if (env_analog && std::string(env_analog) == "1") {
-            std::clog << "Si4688Input: DABBOARD_ANALOG=1 detected. Routing audio to 3.5mm analog jack!" << std::endl;
-            si468x_set_audio_output(0);
-        }
+
     } else {
         std::cerr << "Si4688Input: Hardware board initialization failed (code: " << ret << ")" << std::endl;
         isDeviceOk = false;
@@ -52,12 +47,7 @@ bool CSi4688Input::restart()
         isDeviceOk = true;
         isRunning = true;
 
-        // Runtime check for Analog headphone jack routing
-        const char* env_analog = std::getenv("DABBOARD_ANALOG");
-        if (env_analog && std::string(env_analog) == "1") {
-            std::clog << "Si4688Input: DABBOARD_ANALOG=1 detected. Routing audio to 3.5mm analog jack!" << std::endl;
-            si468x_set_audio_output(0);
-        }
+
         return true;
     }
     return false;

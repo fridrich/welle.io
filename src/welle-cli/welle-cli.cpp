@@ -666,10 +666,7 @@ int main(int argc, char **argv)
                 si4688_in->playService(options.programme);
             }
 
-            auto ao = make_unique<AlsaOutput>("default", 2, 48000);
-            if (ao && ao->ok()) {
-                ao->startCaptureLoopback("hw:dabboard");
-            }
+
             cerr << "Press Ctrl+C to stop..." << endl;
             while (true) {
                 this_thread::sleep_for(chrono::milliseconds(1000));
