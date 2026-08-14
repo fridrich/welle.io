@@ -22,7 +22,7 @@
  *    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
- 
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -78,6 +78,7 @@ Item {
             case 4: deviceBox.currentIndex = 2; break; // RTL_SDR
             case 5: deviceBox.currentIndex = 4; break; // RTL_TCP
             case 6: deviceBox.currentIndex = 3; break; // SOAPYSDR
+            case 9: deviceBox.currentIndex = 6; break; // DABBOARD
             default: deviceBox.currentIndex = 0;
             }
         }
@@ -217,6 +218,7 @@ Item {
                     ListElement { label: "SoapySDR"; trLabel: qsTr("SoapySDR"); trContext: "GlobalSettings" }
                     ListElement { label: "rtl-tcp"; trLabel: qsTr("rtl-tcp"); trContext: "GlobalSettings" }
                     ListElement { label: "RAW file"; trLabel: qsTr("RAW file"); trContext: "GlobalSettings" }
+                    ListElement { label: "DABBoard"; trLabel: qsTr("DABBoard (Si4688)"); trContext: "GlobalSettings" }
                 }
 
                 onCurrentIndexChanged: {
@@ -227,6 +229,7 @@ Item {
                     case 3: sdrSpecificSettings.source = "qrc:/QML/settingpages/SoapySDRSettings.qml"; break
                     case 4: sdrSpecificSettings.source = "qrc:/QML/settingpages/RTLTCPSettings.qml"; break
                     case 5: sdrSpecificSettings.source = "qrc:/QML/settingpages/RawFileSettings.qml"; break
+                    case 6: sdrSpecificSettings.source = "qrc:/QML/settingpages/DABBoardSettings.qml"; break
                     default: sdrSpecificSettings.source = "qrc:/QML/settingpages/NullSettings.qml"; break
                     }
 

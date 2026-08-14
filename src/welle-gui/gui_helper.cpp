@@ -558,6 +558,11 @@ void CGUIHelper::openNull()
     radioController->openDevice(CDeviceID::NULLDEVICE);
 }
 
+void CGUIHelper::openDabboard()
+{
+    radioController->openDevice(CDeviceID::DABBOARD);
+}
+
 void CGUIHelper::openAirspy()
 {
     radioController->openDevice(CDeviceID::AIRSPY);

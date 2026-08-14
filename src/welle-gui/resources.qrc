@@ -92,6 +92,7 @@
         <file>QML/settingpages/ExpertSettings.qml</file>
         <file>QML/settingpages/RawFileSettings.qml</file>
         <file>QML/settingpages/NullSettings.qml</file>
+        <file>QML/settingpages/DABBoardSettings.qml</file>
         <file>QML/settingpages/AirspySettings.qml</file>
         <file>QML/components/MessagePopup.qml</file>
         <file>QML/components/WDialog.qml</file>
