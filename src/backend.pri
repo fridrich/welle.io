@@ -17,6 +17,7 @@ unix:!macx:!android: {
     CONFIG  += airspy
     CONFIG  += rtl_sdr
     CONFIG  += soapysdr
+    CONFIG  += dabboard
 #    CONFIG  += limesdr // Experimental
 
 #    CONFIG  += mpg123_builtin
@@ -62,6 +63,7 @@ macx {
     CONFIG  += airspy
     CONFIG  += rtl_sdr
     CONFIG  += soapysdr
+    CONFIG  += dabboard
 }
 
 android {
@@ -333,4 +335,12 @@ limesdr {
 
     # The same lib for unix and Windows
     LIBS       += -lLimeSuite
+}
+
+
+dabboard {
+    DEFINES    += HAVE_DABBOARD
+    HEADERS    += $$PWD/input/si4688_input.h
+    SOURCES    += $$PWD/input/si4688_input.cpp
+    LIBS       += -lasound
 }

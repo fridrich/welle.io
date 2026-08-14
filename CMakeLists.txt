@@ -27,6 +27,7 @@ option(PROFILING         "Enable profiling (see README.md)"      OFF )
 option(AIRSPY            "Compile with Airspy support"           OFF )
 option(RTLSDR            "Compile with RTL-SDR support"          OFF )
 option(SOAPYSDR          "Compile with SoapySDR support"         OFF )
+option(DABBOARD          "Compile with DABBoard support"         OFF )
 option(FLAC              "Compile with flac support for streaming" OFF )
 option(FDK_AAC           "Use FDK-AAC instead of FAAD"           OFF )
 
@@ -347,6 +348,11 @@ if(LIBAIRSPY_FOUND)
     set(input_sources  ${input_sources} src/input/airspy_sdr.cpp)
 endif()
 
+if(DABBOARD)
+    add_definitions (-DHAVE_DABBOARD)
+    set(input_sources  ${input_sources} src/input/si4688_input.cpp)
+endif()
+
 if(SoapySDR_FOUND)
     add_definitions (-DHAVE_SOAPYSDR)
     set(input_sources  ${input_sources} src/input/soapy_sdr.cpp)
@@ -423,6 +429,10 @@ target_link_libraries(welle PRIVATE
       ${SoapySDR_LIBRARIES}
       ${MPG123_LIBRARIES}
 )
+
+if (DABBOARD)
+    target_link_libraries(welle PRIVATE ${ALSA_LIBRARIES})
+endif()
 
 if (NOT LIBWELLE_STATIC)
 install(TARGETS welle
