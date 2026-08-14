@@ -1032,7 +1032,7 @@ int main(int argc, char **argv)
     if (in->getID() == CDeviceID::DABBOARD) {
         dabboard_ao = std::make_unique<AlsaOutput>("default", 2, 48000);
         if (dabboard_ao && dabboard_ao->ok()) {
-            dabboard_ao->startCaptureLoopback("hw:ugreendabboard");
+            dabboard_ao->startCaptureLoopback("hw:dabboard");
         }
     }
 

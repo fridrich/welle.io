@@ -661,7 +661,7 @@ int main(int argc, char **argv)
             cerr << "DABBOARD: Running in hardware bypass mode..." << endl;
             auto ao = make_unique<AlsaOutput>("default", 2, 48000);
             if (ao && ao->ok()) {
-                ao->startCaptureLoopback("hw:ugreendabboard");
+                ao->startCaptureLoopback("hw:dabboard");
             }
             cerr << "Press Ctrl+C to stop..." << endl;
             while (true) {
