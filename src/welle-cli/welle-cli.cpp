@@ -54,6 +54,7 @@
 #include "welle-cli/tests.h"
 #include "backend/radio-receiver.h"
 #include "input/input_factory.h"
+#include <si468x.h>
 #include "input/raw_file.h"
 #include "various/channels.h"
 #include "libs/json.hpp"
@@ -659,6 +660,36 @@ int main(int argc, char **argv)
         RadioReceiver rx(ri, *in, options.rro);
         if (in->getID() == CDeviceID::DABBOARD) {
             cerr << "DABBOARD: Running in hardware bypass mode..." << endl;
+
+            // Wait for tuner lock on channel frequency
+            this_thread::sleep_for(chrono::milliseconds(1000));
+
+            // Query chip's on-chip hardware service list
+            si468x_service_t services[32];
+            std::memset(services, 0, sizeof(services));
+            int num_services = si468x_get_service_list(services, 32);
+
+            if (num_services > 0) {
+                int service_to_play = 0; // Default to first available station
+                if (!options.programme.empty()) {
+                    for (int s = 0; s < num_services; s++) {
+                        if (std::string(services[s].label) == options.programme ||
+                            std::string(services[s].short_label) == options.programme) {
+                            service_to_play = s;
+                            break;
+                        }
+                    }
+                }
+
+                cerr << "DABBOARD: Playing service: '" << services[service_to_play].label
+                     << "' (SId: 0x" << std::hex << services[service_to_play].service_id
+                     << ", CompId: " << std::dec << services[service_to_play].component_id << ")..." << endl;
+
+                si468x_play_service(services[service_to_play].service_id, services[service_to_play].component_id);
+            } else {
+                cerr << "DABBOARD: No active services found on tuned frequency!" << endl;
+            }
+
             auto ao = make_unique<AlsaOutput>("default", 2, 48000);
             if (ao && ao->ok()) {
                 ao->startCaptureLoopback("hw:dabboard");
