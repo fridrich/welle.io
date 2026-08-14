@@ -1,3 +1,6 @@
+#include <thread>
+#include <chrono>
+#include <cstring>
 /*
  *    Copyright (C) 2026
  *    Silicon Labs Si4688 DABBoard Input Backend for welle.io
@@ -102,6 +105,10 @@ void CSi4688Input::setFrequency(int freq)
     std::clog << "Si4688Input: Tuning hardware to frequency: " << frequency << " Hz" << std::endl;
     if (isDeviceOk) {
         si468x_set_frequency(frequency);
+
+        // Wait for tuner lock and trigger default auto-play of the first service
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        playService("");
     }
 }
 
@@ -139,4 +146,36 @@ std::string CSi4688Input::getDescription()
 CDeviceID CSi4688Input::getID()
 {
     return CDeviceID::DABBOARD;
+}
+
+
+void CSi4688Input::playService(const std::string& name)
+{
+    if (!isDeviceOk) return;
+
+    // Query on-chip service database
+    si468x_service_t services[32];
+    std::memset(services, 0, sizeof(services));
+    int num_services = si468x_get_service_list(services, 32);
+
+    if (num_services > 0) {
+        int service_to_play = 0; // Default to first available service
+        if (!name.empty()) {
+            for (int s = 0; s < num_services; s++) {
+                if (std::string(services[s].label) == name ||
+                    std::string(services[s].short_label) == name) {
+                    service_to_play = s;
+                    break;
+                }
+            }
+        }
+
+        std::clog << "Si4688Input: Playing service: '" << services[service_to_play].label
+                  << "' (SId: 0x" << std::hex << services[service_to_play].service_id
+                  << ", CompId: " << std::dec << services[service_to_play].component_id << ")" << std::endl;
+
+        si468x_play_service(services[service_to_play].service_id, services[service_to_play].component_id);
+    } else {
+        std::cerr << "Si4688Input: No active services found on tuned frequency!" << std::endl;
+    }
 }
