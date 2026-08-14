@@ -10,6 +10,7 @@
 #include <iostream>
 #include <si468x.h>
 #include "si4688_input.h"
+#include "charsets.h"
 
 CSi4688Input::CSi4688Input(RadioControllerInterface& rc)
     : radioController(rc)
@@ -186,8 +187,8 @@ void CSi4688Input::playService(const std::string& name)
         int service_to_play = 0; // Default to first available service
         if (!name.empty()) {
             for (int s = 0; s < num_services; s++) {
-                std::string s_label = services[s].label;
-                std::string s_short = services[s].short_label;
+                std::string s_label = toUtf8StringUsingCharset(services[s].label, CharacterSet::EbuLatin, 16);
+                std::string s_short = toUtf8StringUsingCharset(services[s].short_label, CharacterSet::EbuLatin, 8);
                 if (s_label.find(name) != std::string::npos ||
                     s_short.find(name) != std::string::npos) {
                     service_to_play = s;
@@ -196,7 +197,12 @@ void CSi4688Input::playService(const std::string& name)
             }
         }
 
-        std::clog << "Si4688Input: Playing service: '" << services[service_to_play].label
+        std::string clean_label = toUtf8StringUsingCharset(services[service_to_play].label, CharacterSet::EbuLatin, 16);
+        clean_label.erase(std::find_if(clean_label.rbegin(), clean_label.rend(), [](unsigned char ch) {
+            return !std::isspace(ch);
+        }).base(), clean_label.end());
+
+        std::clog << "Si4688Input: Playing service: '" << clean_label
                   << "' (SId: 0x" << std::hex << services[service_to_play].service_id
                   << ", CompId: " << std::dec << services[service_to_play].component_id << ")" << std::endl;
 
