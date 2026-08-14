@@ -9,31 +9,13 @@
 #include <vector>
 #include <string>
 #include <atomic>
-#include <thread>
 #include "virtual_input.h"
 #include "dab-constants.h"
 #include "radio-controller.h"
 #include "MathHelper.h"
 
-#ifdef QT_CORE_LIB
-#include <QObject>
-#include <QAudioSource>
-#include <QAudioSink>
-#include <QAudioFormat>
-#include <QAudioDevice>
-#include <QMediaDevices>
-#include <QIODevice>
-#endif
-
-class CSi4688Input : 
-#ifdef QT_CORE_LIB
-    public QObject,
-#endif
-    public CVirtualInput
+class CSi4688Input : public CVirtualInput
 {
-#ifdef QT_CORE_LIB
-    Q_OBJECT
-#endif
 public:
     CSi4688Input(RadioControllerInterface& radioController);
     ~CSi4688Input(void);
@@ -61,22 +43,6 @@ private:
     int frequency = kHz(174928);
     std::atomic<bool> isDeviceOk{true};
     std::atomic<bool> isRunning{false};
-
-    // ALSA audio capture thread (for CLI / non-Qt only)
-#if defined(HAVE_ALSA) && !defined(QT_CORE_LIB)
-    std::thread alsaCaptureThread;
-    void alsaCaptureLoop();
-#endif
-
-    // Qt Multimedia audio capture (for GUI)
-#ifdef QT_CORE_LIB
-    QAudioSource* qtAudioSource = nullptr;
-    QAudioSink* qtAudioSink = nullptr;
-    QIODevice* qtAudioDevice = nullptr;
-    QIODevice* qtPlaybackDevice = nullptr;
-    void startQtCapture();
-    void stopQtCapture();
-#endif
 };
 
 #endif // CSI4688INPUT_H

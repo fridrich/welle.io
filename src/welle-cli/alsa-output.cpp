@@ -26,6 +26,7 @@
 #if defined(HAVE_ALSA)
 
 #include <thread>
+#include <iostream>
 #include "welle-cli/alsa-output.h"
 
 using namespace std;
@@ -76,7 +77,6 @@ AlsaOutput::AlsaOutput(const char* device, int chans, unsigned int rate) :
 
     snd_pcm_sw_params_t *swparams;
     snd_pcm_sw_params_alloca(&swparams);
-    /* get the current swparams */
     err = snd_pcm_sw_params_current(pcm_handle, swparams);
     if (err < 0) {
         fprintf(stderr, "Unable to determine current swparams for playback: %s\n",
@@ -101,6 +101,7 @@ AlsaOutput::AlsaOutput(const char* device, int chans, unsigned int rate) :
 }
 
 AlsaOutput::~AlsaOutput() {
+    stopCaptureLoopback();
     if (pcm_handle) {
         snd_pcm_drain(pcm_handle);
         snd_pcm_close(pcm_handle);
@@ -112,8 +113,6 @@ void AlsaOutput::playPCM(std::vector<int16_t>&& pcm)
     if (pcm.empty())
         return;
 
-    /* Without a device, or without a period size to send the samples in,
-     * there is nothing we can do with the audio. */
     if (pcm_handle == nullptr or period_size == 0)
         return;
 
@@ -141,6 +140,74 @@ void AlsaOutput::playPCM(std::vector<int16_t>&& pcm)
             data += samples_read;
         }
     }
+}
+
+void AlsaOutput::startCaptureLoopback(const std::string& capture_device)
+{
+    if (!captureRunning) {
+        std::clog << "AlsaOutput: Starting capture loopback from " << capture_device << "..." << std::endl;
+        captureRunning = true;
+        captureThread = std::thread(&AlsaOutput::captureLoop, this, capture_device);
+    }
+}
+
+void AlsaOutput::stopCaptureLoopback()
+{
+    if (captureRunning) {
+        std::clog << "AlsaOutput: Stopping capture loopback..." << std::endl;
+        captureRunning = false;
+        if (captureThread.joinable()) {
+            captureThread.join();
+        }
+    }
+}
+
+void AlsaOutput::captureLoop(const std::string& capture_device)
+{
+    snd_pcm_t *capture_handle = nullptr;
+
+    // 1. Open Capture Device
+    int err = snd_pcm_open(&capture_handle, capture_device.c_str(), SND_PCM_STREAM_CAPTURE, 0);
+    if (err < 0) {
+        fprintf(stderr, "AlsaOutput Capture: Can't open \"%s\" device. %s\n",
+                capture_device.c_str(), snd_strerror(err));
+        captureRunning = false;
+        return;
+    }
+
+    // 2. Configure Capture HW parameters
+    snd_pcm_hw_params_t *c_params;
+    snd_pcm_hw_params_alloca(&c_params);
+    snd_pcm_hw_params_any(capture_handle, c_params);
+    snd_pcm_hw_params_set_access(capture_handle, c_params, SND_PCM_ACCESS_RW_INTERLEAVED);
+    snd_pcm_hw_params_set_format(capture_handle, c_params, SND_PCM_FORMAT_S16_LE);
+    unsigned int rate = 48000;
+    snd_pcm_hw_params_set_rate_near(capture_handle, c_params, &rate, 0);
+    snd_pcm_hw_params_set_channels(capture_handle, c_params, 2);
+    snd_pcm_hw_params(capture_handle, c_params);
+    snd_pcm_prepare(capture_handle);
+
+    const int frames_to_read = 512;
+    std::vector<int16_t> temp_buf(frames_to_read * 2);
+
+    while (captureRunning) {
+        int read_result = snd_pcm_readi(capture_handle, temp_buf.data(), frames_to_read);
+        if (read_result > 0) {
+            if (pcm_handle) {
+                int write_result = snd_pcm_writei(pcm_handle, temp_buf.data(), read_result);
+                if (write_result == -EPIPE) {
+                    snd_pcm_prepare(pcm_handle);
+                }
+            }
+        } else if (read_result == -EPIPE) {
+            snd_pcm_prepare(capture_handle);
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+    }
+
+    snd_pcm_close(capture_handle);
+    fprintf(stderr, "AlsaOutput: Capture loopback finished.\n");
 }
 
 #endif // defined(HAVE_ALSA)
