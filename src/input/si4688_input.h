@@ -38,6 +38,9 @@ public:
 
     CDeviceID getID(void) override;
 
+    // Frontend-agnostic hardware playback control
+    void playService(const std::string& name);
+
 private:
     RadioControllerInterface& radioController;
     int frequency = kHz(174928);
