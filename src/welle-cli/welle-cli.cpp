@@ -657,6 +657,17 @@ int main(int argc, char **argv)
     }
     else {
         RadioReceiver rx(ri, *in, options.rro);
+        if (in->getID() == CDeviceID::DABBOARD) {
+            cerr << "DABBOARD: Running in hardware bypass mode..." << endl;
+            auto ao = make_unique<AlsaOutput>("default", 2, 48000);
+            if (ao && ao->ok()) {
+                ao->startCaptureLoopback("hw:ugreendabboard");
+            }
+            cerr << "Press Ctrl+C to stop..." << endl;
+            while (true) {
+                this_thread::sleep_for(chrono::milliseconds(1000));
+            }
+        }
         if (options.decode_all_programmes) {
             FILE* fic_fd = fopen("dump.fic", "w");
 

@@ -7,7 +7,7 @@
  *
  *    This file is part of the welle.io.
  *    Many of the ideas as implemented in welle.io are derived from
- *    other work, made available through the GNU general Public License. 
+ *    other work, made available through the GNU general Public License.
  *    All copyrights of the original authors are recognized.
  *
  *    welle.io is free software; you can redistribute it and/or modify
@@ -49,6 +49,7 @@ CAudioThread::CAudioThread(RingBuffer<int16_t>& buffer, QObject *parent) :
 
 CAudioThread::~CAudioThread(void)
 {
+    stopDabboardLoopback();
     if (audioOutput != nullptr) {
         delete audioOutput;
         audioOutput = nullptr;
@@ -268,3 +269,66 @@ void CAudio::setVolume(qreal volume)
 }
 
 
+
+
+void CAudioThread::enableDabboardLoopback(bool enable)
+{
+    if (dabboardLoopbackEnabled != enable) {
+        dabboardLoopbackEnabled = enable;
+        if (dabboardLoopbackEnabled) {
+            startDabboardLoopback();
+        } else {
+            stopDabboardLoopback();
+        }
+    }
+}
+
+void CAudioThread::startDabboardLoopback()
+{
+    if (qtAudioSource) return;
+    qDebug() << "AudioThread: Starting programmatic I2S loopback...";
+
+    QAudioFormat format;
+    format.setSampleRate(48000);
+    format.setChannelCount(2);
+    format.setSampleFormat(QAudioFormat::Int16);
+
+    QAudioDevice targetDevice;
+    const auto devices = QMediaDevices::audioInputs();
+    for (const auto &device : devices) {
+        if (device.description().contains("ugreen-dabboard") ||
+            device.description().contains("DABBoard")) {
+            targetDevice = device;
+            break;
+        }
+    }
+    if (targetDevice.isNull()) {
+        targetDevice = QMediaDevices::defaultAudioInput();
+    }
+
+    qtAudioSource = new QAudioSource(targetDevice, format, this);
+    qtAudioDevice = qtAudioSource->start();
+
+    connect(qtAudioDevice, &QIODevice::readyRead, this, [this]() {
+        QByteArray pcmData = qtAudioDevice->readAll();
+        const int16_t* samples = reinterpret_cast<const int16_t*>(pcmData.constData());
+        int sampleCount = pcmData.size() / sizeof(int16_t);
+        buffer.putDataIntoBuffer(samples, sampleCount);
+    });
+}
+
+void CAudioThread::stopDabboardLoopback()
+{
+    if (qtAudioSource) {
+        qDebug() << "AudioThread: Stopping programmatic I2S loopback...";
+        qtAudioSource->stop();
+        delete qtAudioSource;
+        qtAudioSource = nullptr;
+        qtAudioDevice = nullptr;
+    }
+}
+
+void CAudio::enableDabboardLoopback(bool enable)
+{
+    QMetaObject::invokeMethod(audioThread.get(), "enableDabboardLoopback", Qt::QueuedConnection, Q_ARG(bool, enable));
+}

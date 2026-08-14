@@ -1028,6 +1028,14 @@ int main(int argc, char **argv)
     RadioReceiver rx(ri, *in, options.rro);
     AlsaProgrammeHandler ph(&lcdIS, options.pcm);
 
+    std::unique_ptr<AlsaOutput> dabboard_ao = nullptr;
+    if (in->getID() == CDeviceID::DABBOARD) {
+        dabboard_ao = std::make_unique<AlsaOutput>("default", 2, 48000);
+        if (dabboard_ao && dabboard_ao->ok()) {
+            dabboard_ao->startCaptureLoopback("hw:ugreendabboard");
+        }
+    }
+
     int current_station_idx = -1;
 
     auto tuneToStationIndex = [&](int idx) {
