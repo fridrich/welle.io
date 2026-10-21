@@ -56,7 +56,7 @@
 #include "ringbuffer.h"
 
 enum class CDeviceID {
-    UNKNOWN, NULLDEVICE, AIRSPY, RAWFILE, RTL_SDR, RTL_TCP, SOAPYSDR, ANDROID_RTL_SDR, LIMESDR, V4L2};
+    UNKNOWN, NULLDEVICE, AIRSPY, RAWFILE, RTL_SDR, RTL_TCP, SOAPYSDR, ANDROID_RTL_SDR, LIMESDR, V4L2, DABBOARD};
 
 // Sample format of an I/Q recording, named like the formats of the RAW file
 // input (file extension ".<name>.iq")
