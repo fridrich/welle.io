@@ -127,7 +127,7 @@ CRadioController::CRadioController(QVariantMap& commandLineOptions, QObject *par
     qRegisterMetaType<DabLabel>("DabLabel&");
     connect(this, &CRadioController::ensembleLabelUpdated,
             this, &CRadioController::ensembleLabel);
-        
+
     connect(this, &CRadioController::serviceDetected,
             this, &CRadioController::serviceId);
 
@@ -154,6 +154,7 @@ void CRadioController::closeDevice()
     finishRecording(tr("The recording was stopped because the input device was closed."));
     radioReceiver.reset();
     device.reset();
+    audio.enableDabboardLoopback(false);
     audio.reset();
     setInputRunning(false);
 
@@ -881,6 +882,12 @@ void CRadioController::initialise(void)
     deviceId = device->getID();
     emit deviceIdChanged();
 
+    if (deviceId == CDeviceID::DABBOARD) {
+        audio.enableDabboardLoopback(true);
+    } else {
+        audio.enableDabboardLoopback(false);
+    }
+
     if(isAutoPlay) {
         play(autoChannel, tr("Playing last station"), autoService);
     }
@@ -1295,7 +1302,7 @@ void CRadioController::onMessage(message_level_t level, const std::string& text,
       fullText = tr(text.c_str());
     else
       fullText = tr(text.c_str()) + QString::fromStdString(text2);
-    
+
     switch (level) {
         case message_level_t::Information:
             emit showInfoMessage(fullText);

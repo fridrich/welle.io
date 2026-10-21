@@ -46,6 +46,7 @@
         <file>QML/settings/StationSettings.qml</file>
         <file>QML/settings/devices/AirspySettings.qml</file>
         <file>QML/settings/devices/NullSettings.qml</file>
+        <file>QML/settings/devices/DABBoardSettings.qml</file>
         <file>QML/settings/devices/RTLSDRSettings.qml</file>
         <file>QML/settings/devices/RTLTCPSettings.qml</file>
         <file>QML/settings/devices/RawFileSettings.qml</file>

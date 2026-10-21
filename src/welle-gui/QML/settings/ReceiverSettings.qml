@@ -53,7 +53,8 @@ ColumnLayout {
         { label: QT_TRANSLATE_NOOP("Settings", "SoapySDR"), setting: 3, deviceId: 6, page: "SoapySDRSettings.qml" },
         { label: QT_TRANSLATE_NOOP("Settings", "rtl-tcp"), setting: 4, deviceId: 5, page: "RTLTCPSettings.qml" },
         { label: QT_TRANSLATE_NOOP("Settings", "RAW file"), setting: 5, deviceId: 3, page: "RawFileSettings.qml" },
-        { label: QT_TRANSLATE_NOOP("Settings", "Linux SDR (V4L2)"), setting: 6, deviceId: 9, page: "V4L2Settings.qml" }
+        { label: QT_TRANSLATE_NOOP("Settings", "Linux SDR (V4L2)"), setting: 6, deviceId: 9, page: "V4L2Settings.qml" },
+        { label: QT_TRANSLATE_NOOP("Settings", "DABBoard (Si4688)"), setting: 7, deviceId: 10, page: "DABBoardSettings.qml" }
     ]
 
     // The saved device, or "None" if this build doesn't support it
@@ -110,6 +111,7 @@ ColumnLayout {
             case 5: receiverSettings.device = 4; break; // RTL_TCP
             case 6: receiverSettings.device = 3; break; // SOAPYSDR
             case 9: receiverSettings.device = 6; break; // V4L2
+            case 10: receiverSettings.device = 7; break; // DABBOARD
             default: receiverSettings.device = 0;
             }
         }
