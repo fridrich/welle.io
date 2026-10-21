@@ -54,6 +54,9 @@
 #include "welle-cli/tests.h"
 #include "backend/radio-receiver.h"
 #include "input/input_factory.h"
+#ifdef HAVE_DABBOARD
+#  include "input/si4688_input.h"
+#endif
 #include "input/raw_file.h"
 #include "various/channels.h"
 #include "libs/json.hpp"
@@ -662,6 +665,22 @@ int main(int argc, char **argv)
     }
     else {
         RadioReceiver rx(ri, *in, options.rro);
+#ifdef HAVE_DABBOARD
+        if (in->getID() == CDeviceID::DABBOARD) {
+            cerr << "DABBOARD: Running in hardware bypass mode..." << endl;
+
+            auto* si4688_in = dynamic_cast<CSi4688Input*>(in.get());
+            if (si4688_in && !options.programme.empty()) {
+                si4688_in->playService(options.programme);
+            }
+
+
+            cerr << "Press Ctrl+C to stop..." << endl;
+            while (true) {
+                this_thread::sleep_for(chrono::milliseconds(1000));
+            }
+        }
+#endif
         if (options.decode_all_programmes) {
             FILE* fic_fd = fopen("dump.fic", "w");
 
