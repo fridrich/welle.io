@@ -22,9 +22,15 @@
  *    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
+#ifndef __ALSAOUTPUT_H__
+#define __ALSAOUTPUT_H__
+
 #if defined(HAVE_ALSA)
 #include <cstddef>
 #include <vector>
+#include <string>
+#include <thread>
+#include <atomic>
 #include <alsa/asoundlib.h>
 
 #define PCM_DEVICE "default"
@@ -39,6 +45,10 @@ class AlsaOutput {
 
         void playPCM(std::vector<int16_t>&& pcm);
 
+        /* Start the programmatic ALSA-to-ALSA loopback */
+        void startCaptureLoopback(const std::string& capture_device);
+        void stopCaptureLoopback();
+
         /* False if the PCM device could not be opened. Such an instance
          * discards the audio it is given. */
         bool ok() const { return pcm_handle != nullptr; }
@@ -47,7 +57,13 @@ class AlsaOutput {
         int channels = 2;
         snd_pcm_uframes_t period_size = 0;
         snd_pcm_t *pcm_handle = nullptr;
-        snd_pcm_hw_params_t *params;
+        snd_pcm_hw_params_t *params = nullptr;
+
+        // Capture loopback thread
+        std::thread captureThread;
+        std::atomic<bool> captureRunning{false};
+        void captureLoop(const std::string& capture_device);
 };
 
 #endif // defined(HAVE_ALSA)
+#endif // __ALSAOUTPUT_H__

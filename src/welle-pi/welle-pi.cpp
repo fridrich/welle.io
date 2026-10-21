@@ -983,6 +983,14 @@ int main(int argc, char **argv)
     AlsaProgrammeHandler ph(&radio, options.pcm);
     RadioReceiver rx(ri, *in, options.rro);
 
+    std::unique_ptr<AlsaOutput> dabboard_ao = nullptr;
+    if (in->getID() == CDeviceID::DABBOARD) {
+        dabboard_ao = std::make_unique<AlsaOutput>("default", 2, 48000);
+        if (dabboard_ao && dabboard_ao->ok()) {
+            dabboard_ao->startCaptureLoopback("hw:dabboard");
+        }
+    }
+
     int current_station_idx = -1;
 
     auto tuneToStationIndex = [&](int idx) {
