@@ -18,6 +18,7 @@ unix:!macx:!android: {
     CONFIG  += rtl_sdr
     CONFIG  += soapysdr
     CONFIG  += v4l2_sdr
+#    CONFIG  += dabboard // needs libsi468x; or: qmake CONFIG+=dabboard
 #    CONFIG  += limesdr // Experimental
 
 #    CONFIG  += mpg123_builtin
@@ -154,7 +155,7 @@ HEADERS += \
     $$PWD/input/rtl_tcp.h \
     $$PWD/input/software_agc.h \
     $$PWD/input/rational_resampler.h
-	
+
 SOURCES += \
     $$PWD/backend/dab-audio.cpp \
     $$PWD/backend/dab_decoder.cpp \
@@ -357,4 +358,13 @@ limesdr {
 
     # The same lib for unix and Windows
     LIBS       += -lLimeSuite
+}
+
+
+dabboard {
+    DEFINES    += HAVE_DABBOARD
+    HEADERS    += $$PWD/input/si4688_input.h
+    SOURCES    += $$PWD/input/si4688_input.cpp
+    CONFIG     += link_pkgconfig
+    PKGCONFIG  += libsi468x
 }
