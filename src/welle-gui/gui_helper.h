@@ -95,6 +95,7 @@ public:
 
     Q_INVOKABLE void openAutoDevice();
     Q_INVOKABLE void openNull();
+    Q_INVOKABLE void openDabboard();
     Q_INVOKABLE void openAirspy();
     Q_INVOKABLE void setBiasTeeAirspy(bool isOn);
     Q_INVOKABLE void setAirspyGainMode(int mode);

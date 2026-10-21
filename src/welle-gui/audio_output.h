@@ -34,6 +34,7 @@
 #include <QThread>
 #include <QMetaObject>
 #include <QAudioSink>
+#include <QAudioSource>
 #include <QAudioDevice>
 #include <QMediaDevices>
 #include "dab-constants.h"
@@ -73,6 +74,7 @@ class CAudioThread: public QThread
         void reset(void);
         void setRate(int sampleRate);
         void setVolume(qreal volume);
+        void enableDabboardLoopback(bool enable);
 
     private:
         RingBuffer<int16_t>& buffer;
@@ -84,6 +86,11 @@ class CAudioThread: public QThread
         QAudio::State currentState = QAudio::StoppedState;
         int32_t cardRate;
         qreal volume = 1.0;
+        bool dabboardLoopbackEnabled = false;
+        QAudioSource* qtAudioSource = nullptr;
+        QIODevice* qtAudioDevice = nullptr;
+        void startDabboardLoopback();
+        void stopDabboardLoopback();
 
     signals:
     public slots:
@@ -108,6 +115,7 @@ class CAudio : public QObject
         void reset(void);
         void setRate(int sampleRate);
         void setVolume(qreal volume);
+        void enableDabboardLoopback(bool enable);
 
     private:
         std::unique_ptr<CAudioThread> audioThread;
