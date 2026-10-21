@@ -26,6 +26,7 @@ option(AIRSPY            "Compile with Airspy support"           ON )
 option(RTLSDR            "Compile with RTL-SDR support"          ON )
 option(SOAPYSDR          "Compile with SoapySDR support"         OFF )
 option(V4L2_SDR          "Compile with Linux kernel SDR (V4L2) support" ON )
+option(DABBOARD          "Compile with DABBoard support"         OFF )
 option(FLAC              "Compile with flac support for streaming" OFF )
 option(FDK_AAC           "Use FDK-AAC instead of FAAD"           OFF )
 option(BUILD_TESTS       "Build automated tests (CTest)"         OFF )
@@ -372,6 +373,14 @@ if(V4L2_SDR AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
     endif()
 endif()
 
+if(DABBOARD)
+    add_definitions (-DHAVE_DABBOARD)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SI468X REQUIRED libsi468x)
+    include_directories(${SI468X_INCLUDE_DIRS})
+    set(input_sources  ${input_sources} src/input/si4688_input.cpp)
+endif()
+
 if(SoapySDR_FOUND)
     add_definitions (-DHAVE_SOAPYSDR)
     set(input_sources  ${input_sources} src/input/soapy_sdr.cpp)
@@ -448,6 +457,12 @@ target_link_libraries(welle PRIVATE
       ${SoapySDR_LIBRARIES}
       ${MPG123_LIBRARIES}
 )
+
+
+
+if (DABBOARD)
+    target_link_libraries(welle PRIVATE ${SI468X_LINK_LIBRARIES})
+endif()
 
 if (NOT LIBWELLE_STATIC)
 install(TARGETS welle
