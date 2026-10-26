@@ -85,8 +85,15 @@ The volume and mute keys turn the mixer of the sound card, as described in
 [welle-pi volume](welle-pi-volume.md); they are the only actions that do
 not change what is on the screen.
 
-Only presses are used; the autorepeat of a held key is ignored, so one
-press is one step.
+One press is one step; holding the key repeats it, and only presses are
+used — the autorepeat the remote itself sends (event value 2) is ignored
+because it runs at the keyboard rate of 33 ms, faster than the screens can
+follow. A button that is held down repeats after 400 ms, then every 120 ms,
+so a held wheel scrolls the station list and a held volume key ramps the
+mixer. `UP`, `DOWN`, `VOLUME_UP` and `VOLUME_DOWN` repeat; `LEFT`,
+`RIGHT`, `ENTER`, `MENU`, `HOME`, `MUTE` and `QUIT` happen once per press,
+so that a long press cannot open several screens, toggle the mute twice or
+stop the radio.
 
 Keys of the entry:
 

@@ -27,7 +27,9 @@
 #include <cctype>
 #include <cerrno>
 #include <cstring>
+#include <ctime>
 #include <iostream>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -61,11 +63,31 @@ const size_t MAX_DEVICES = 4;
 
 const int POLL_MS = 200;
 
+/* A button that is held down repeats: one step, a pause, then a steady rate,
+ * so that the station list scrolls and the volume ramps. The autorepeat of the
+ * remote itself (value 2, if the kernel sends it at all) is ignored: it runs
+ * at the keyboard rate of 33 ms, which the screens cannot follow. */
+const int REPEAT_DELAY_MS = 400;
+const int REPEAT_INTERVAL_MS = 120;
+
 struct Device {
     int fd;
     std::string path;
     std::string name;
 };
+
+/* A button that is down: the action it sends and when it repeats next */
+struct Held {
+    int action;
+    long due;
+};
+
+long nowMs()
+{
+    struct timespec ts = {};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+}
 
 bool testBit(int bit, const unsigned long* bits)
 {
@@ -217,13 +239,46 @@ void logCandidates(const RemoteConfig& cfg)
     }
 }
 
+/* How long the input thread sleeps at most, and when the next held button is
+ * due: the thread sleeps exactly as long as it can. */
+int repeatTimeout(const std::map<int, Held>& held)
+{
+    if (held.empty()) {
+        return POLL_MS;
+    }
+    const long now = nowMs();
+    long next = POLL_MS;
+    for (const auto& key : held) {
+        next = std::min(next, key.second.due - now);
+    }
+    return static_cast<int>(std::max(1L, next));
+}
+
+/* Sends the next step of every button that is held long enough */
+void repeatHeld(std::map<int, Held>& held, const welle_pi_input_host* host)
+{
+    const long now = nowMs();
+    for (auto& key : held) {
+        if (key.second.due > now) {
+            continue;
+        }
+        host->push(host->ctx, static_cast<welle_pi_action>(key.second.action));
+        key.second.due = now + REPEAT_INTERVAL_MS;
+    }
+}
+
 void handleKey(int code, const RemoteConfig& cfg, const welle_pi_input_host* host,
-        std::set<int>& reported)
+        std::set<int>& reported, std::map<int, Held>& held)
 {
     int action = 0;
     if (lookupKey(cfg, code, action)) {
-        if (action >= 0) {
-            host->push(host->ctx, static_cast<welle_pi_action>(action));
+        if (action < 0) {
+            return;
+        }
+        host->push(host->ctx, static_cast<welle_pi_action>(action));
+        /* a repeatable button stays down until its release event */
+        if (repeatableAction(action)) {
+            held[code] = {action, nowMs() + REPEAT_DELAY_MS};
         }
         return;
     }
@@ -251,8 +306,9 @@ void readDevices(std::vector<Device>& devices, const RemoteConfig& cfg,
     }
 
     std::set<int> reported;
+    std::map<int, Held> held;
     while (!host->stop_requested(host->ctx)) {
-        const int ready = poll(fds.data(), fds.size(), POLL_MS);
+        const int ready = poll(fds.data(), fds.size(), repeatTimeout(held));
         if (ready < 0) {
             if (errno == EINTR) {
                 continue;
@@ -279,13 +335,20 @@ void readDevices(std::vector<Device>& devices, const RemoteConfig& cfg,
             }
             const size_t count = size_t(got) / sizeof events[0];
             for (size_t e = 0; e < count; ++e) {
-                /* 0 is the release, 2 the autorepeat of a held key: one action
-                 * per press is what the screens expect. */
-                if (events[e].type == EV_KEY && events[e].value == 1) {
-                    handleKey(events[e].code, cfg, host, reported);
+                if (events[e].type != EV_KEY) {
+                    continue;
+                }
+                /* 1 is the press, 0 the release that stops the repeat, 2 the
+                 * remote's own autorepeat, which repeatHeld() does itself */
+                if (events[e].value == 1) {
+                    handleKey(events[e].code, cfg, host, reported, held);
+                } else if (events[e].value == 0) {
+                    held.erase(events[e].code);
                 }
             }
         }
+
+        repeatHeld(held, host);
     }
 }
 
