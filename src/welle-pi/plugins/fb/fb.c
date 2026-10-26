@@ -47,7 +47,13 @@ struct fb {
     unsigned width, height;
 };
 
-/* Next code point of UTF-8 s; '?' outside the font (U+0000-007F, U+00A0-00FF) */
+/* U+2588 FULL BLOCK, the filled part of the volume bar (volumeLine() in
+ * ui_manager.cpp); the ASCII fonts have no block */
+static const char glyph_full_block[8] =
+    {(char)0xff, (char)0xff, (char)0xff, (char)0xff, (char)0xff, (char)0xff, (char)0xff, (char)0xff};
+
+/* Next code point of UTF-8 s; '?' outside the font (U+0000-007F, U+00A0-00FF
+ * and the block above) */
 static const char* glyph(const char* s, const char** next)
 {
     unsigned char c = (unsigned char)s[0];
@@ -58,11 +64,15 @@ static const char* glyph(const char* s, const char** next)
     } else if ((c & 0xe0) == 0xc0 && s[1]) {
         cp = ((c & 0x1fu) << 6) | (s[1] & 0x3fu);
         *next = s + 2;
+    } else if ((c & 0xf0) == 0xe0 && s[1] && s[2]) {
+        cp = ((c & 0x0fu) << 12) | ((s[1] & 0x3fu) << 6) | (s[2] & 0x3fu);
+        *next = s + 3;
     } else {
         while ((**next & 0xc0) == 0x80) (*next)++;
     }
     if (cp >= 0x20 && cp < 0x80) return font8x8_basic[cp];
     if (cp >= 0xa0 && cp <= 0xff) return font8x8_ext_latin[cp - 0xa0];
+    if (cp == 0x2588) return glyph_full_block;
     return font8x8_basic['?'];
 }
 

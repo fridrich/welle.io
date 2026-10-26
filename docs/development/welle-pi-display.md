@@ -77,7 +77,8 @@ when it stops. Without an LCD (no size in the device tree or no
 `{"plugin": "fb", "device": "/dev/fb1"}` (`src/welle-pi/plugins/fb/`,
 default device `/dev/fb0`) draws the text with an 8x8 font
 ([font8x8](https://github.com/dhepper/font8x8), public domain; U+0020 to
-U+007F and U+00A0 to U+00FF, `?` for the rest) on any framebuffer with 16
+U+007F, U+00A0 to U+00FF and U+2588 for the volume bar, `?` for the rest)
+on any framebuffer with 16
 or 32 bits per pixel, e.g. a 128 x 64 SSD1306 OLED gives 16 x 8
 characters. The kernel drives the panel; for an I2C SSD1306 on a Raspberry
 Pi:
