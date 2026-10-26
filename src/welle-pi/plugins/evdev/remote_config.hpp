@@ -59,4 +59,9 @@ bool keyCodeFromName(const std::string& name, int& code);
 const char* actionName(int action);
 bool actionFromName(const std::string& name, int& action);
 
+/* True for the actions a button that is held down repeats: up, down,
+ * volume_up and volume_down. Everything else happens once per press, so that
+ * a long press on enter, menu, home, mute or quit cannot repeat. */
+bool repeatableAction(int action);
+
 #endif // WELLE_PI_REMOTE_CONFIG_HPP

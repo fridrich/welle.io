@@ -44,7 +44,9 @@ the file, the defaults apply.
 ## Behaviour
 
 * One key press is one step of `step` percent of the element's range,
-  always at least one raw step, clamped at the ends. Pressing up and down
+  always at least one raw step, clamped at the ends. A held key keeps
+  stepping, because the input plugin repeats it, see
+  [welle-pi input](welle-pi-input.md). Pressing up and down
   again returns exactly to the level before, because the step is computed
   from the raw value of the control, not from a percentage.
 * The element is unmuted while changing it: a muted card would otherwise

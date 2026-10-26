@@ -138,6 +138,21 @@ int main()
     assert(actionFromName("mute", named) && named == WELLE_PI_MUTE);
     assert(!actionFromName("volume", named));
 
+    // a held button only repeats where a second step is what the user means:
+    // the station list and the volume, not a screen, the mute or the radio
+    assert(repeatableAction(WELLE_PI_UP));
+    assert(repeatableAction(WELLE_PI_DOWN));
+    assert(repeatableAction(WELLE_PI_VOLUME_UP));
+    assert(repeatableAction(WELLE_PI_VOLUME_DOWN));
+    assert(!repeatableAction(WELLE_PI_LEFT));
+    assert(!repeatableAction(WELLE_PI_RIGHT));
+    assert(!repeatableAction(WELLE_PI_ENTER));
+    assert(!repeatableAction(WELLE_PI_MENU));
+    assert(!repeatableAction(WELLE_PI_HOME));
+    assert(!repeatableAction(WELLE_PI_MUTE));
+    assert(!repeatableAction(WELLE_PI_QUIT));
+    assert(!repeatableAction(-1));
+
     std::cout << "evdev_tests: OK" << std::endl;
     return 0;
 }
