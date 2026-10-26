@@ -53,20 +53,23 @@ int main()
     assert(cfg.grab && cfg.device.empty() && cfg.name.empty());
 
     // the codes the remote actually sends: on/off is KEY_SLEEP, home
-    // KEY_HOMEPAGE, menu KEY_COMPOSE, back KEY_ESC, mouse mode KEY_F19
+    // KEY_HOMEPAGE, menu KEY_COMPOSE, back KEY_ESC, volume and mute the
+    // consumer control codes, mouse mode KEY_F19
     assert(actionOf(cfg, KEY_SLEEP) == WELLE_PI_QUIT);
-    assert(actionOf(cfg, KEY_HOMEPAGE) == WELLE_PI_MENU);
+    assert(actionOf(cfg, KEY_HOMEPAGE) == WELLE_PI_HOME);
+    assert(actionOf(cfg, KEY_HOME) == WELLE_PI_HOME);
     assert(actionOf(cfg, KEY_COMPOSE) == WELLE_PI_MENU);
     assert(actionOf(cfg, KEY_ESC) == WELLE_PI_LEFT);
     assert(actionOf(cfg, KEY_WAKEUP) == -1);        // the same button after resume
     assert(actionOf(cfg, KEY_F19) == -1);           // mouse mode switch
-    assert(actionOf(cfg, KEY_VOLUMEUP) == -1);      // known, but no action
-    assert(actionOf(cfg, KEY_VOLUMEDOWN) == -1);
+    assert(actionOf(cfg, KEY_VOLUMEUP) == WELLE_PI_VOLUME_UP);
+    assert(actionOf(cfg, KEY_VOLUMEDOWN) == WELLE_PI_VOLUME_DOWN);
+    assert(actionOf(cfg, KEY_MUTE) == WELLE_PI_MUTE);
 
     // the OSMC remote, which sends keyboard keys instead: volume on minus and
     // equal, context on C, info on I, and play/pause and stop
-    assert(actionOf(cfg, KEY_MINUS) == -1);
-    assert(actionOf(cfg, KEY_EQUAL) == -1);
+    assert(actionOf(cfg, KEY_MINUS) == WELLE_PI_VOLUME_DOWN);
+    assert(actionOf(cfg, KEY_EQUAL) == WELLE_PI_VOLUME_UP);
     assert(actionOf(cfg, KEY_STOP) == -1);
     assert(actionOf(cfg, KEY_PLAYPAUSE) == -1);
     assert(actionOf(cfg, KEY_C) == WELLE_PI_MENU);
@@ -85,14 +88,16 @@ int main()
     // remap for another remote: by name, by number, disabled, and a default
     // that is not mentioned stays
     assert(parseRemoteConfig(
-            R"({"map":{"KEY_POWER":"menu","KEY_SLEEP":"right","108":"none","KEY_ENTER":"up"}})",
+            R"({"map":{"KEY_POWER":"menu","KEY_SLEEP":"right","108":"none",)"
+            R"("KEY_ENTER":"up","KEY_STOP":"mute"}})",
             cfg, error));
     assert(actionOf(cfg, KEY_POWER) == WELLE_PI_MENU);
     assert(actionOf(cfg, KEY_SLEEP) == WELLE_PI_RIGHT);
     assert(actionOf(cfg, KEY_DOWN) == -1);
     assert(actionOf(cfg, KEY_ENTER) == WELLE_PI_UP);
     assert(actionOf(cfg, KEY_UP) == WELLE_PI_UP);
-    assert(actionOf(cfg, KEY_VOLUMEUP) == -1);
+    assert(actionOf(cfg, KEY_STOP) == WELLE_PI_MUTE);
+    assert(actionOf(cfg, KEY_VOLUMEUP) == WELLE_PI_VOLUME_UP);  // not mentioned: default
 
     // device selection
     assert(parseRemoteConfig(
@@ -123,8 +128,15 @@ int main()
     assert(std::string(keyName(KEY_ENTER)) == "KEY_ENTER");
     assert(keyName(42) == nullptr);
     assert(std::string(actionName(WELLE_PI_QUIT)) == "quit");
+    assert(std::string(actionName(WELLE_PI_VOLUME_UP)) == "volume_up");
+    assert(std::string(actionName(WELLE_PI_MUTE)) == "mute");
+    assert(std::string(actionName(WELLE_PI_HOME)) == "home");
     assert(actionName(-1) != nullptr);
-    assert(actionName(WELLE_PI_QUIT + 1) == nullptr);
+    assert(actionName(WELLE_PI_ACTION_COUNT) == nullptr);
+    int named = 0;
+    assert(actionFromName("volume_down", named) && named == WELLE_PI_VOLUME_DOWN);
+    assert(actionFromName("mute", named) && named == WELLE_PI_MUTE);
+    assert(!actionFromName("volume", named));
 
     std::cout << "evdev_tests: OK" << std::endl;
     return 0;
