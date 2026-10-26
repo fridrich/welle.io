@@ -98,9 +98,10 @@ static void define_block(struct lcd* lcd)
 }
 
 /* {"plugin": "lcd"}; size from the device tree */
-void* welle_pi_display_open(const char* config, int* cols, int* rows)
+void* welle_pi_display_open(const char* config, int* cols, int* rows, unsigned* features)
 {
     (void)config;
+    *features = 0;      /* a character LCD has no reverse video */
     *cols = (int)read_of_u32(OF_NODE "display-width-chars");
     *rows = (int)read_of_u32(OF_NODE "display-height-chars");
     int fd = *cols > 0 && *rows > 0 ? open("/dev/lcd", O_WRONLY) : -1;
@@ -117,9 +118,10 @@ void* welle_pi_display_open(const char* config, int* cols, int* rows)
     return lcd;
 }
 
-void welle_pi_display_present(void* handle, const char* const* lines, int cols, int rows)
+void welle_pi_display_present(void* handle, const char* const* lines, int cols, int rows, int highlight)
 {
     (void)cols;
+    (void)highlight;    /* no reverse video: the screens put > and < around it */
     struct lcd* lcd = handle;
     char buf[256];
     for (int row = 0; row < rows && row < lcd->rows; ++row) {
