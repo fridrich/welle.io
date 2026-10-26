@@ -54,8 +54,8 @@ bool lookupKey(const RemoteConfig& cfg, int code, int& action);
 const char* keyName(int code);
 bool keyCodeFromName(const std::string& name, int& code);
 
-/* "up", "down", "left", "right", "enter", "menu", "quit", "none";
- * nullptr/false if unknown. */
+/* "up", "down", "left", "right", "enter", "menu", "quit", "volume_up",
+ * "volume_down", "mute", "home", "none"; nullptr/false if unknown. */
 const char* actionName(int action);
 bool actionFromName(const std::string& name, int& action);
 
