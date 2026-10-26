@@ -18,6 +18,7 @@ function(welle_pi_plugin name)
     endif()
 endfunction()
 
+add_subdirectory(evdev)
 add_subdirectory(fb)
 add_subdirectory(lcd)
 
