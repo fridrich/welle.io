@@ -61,12 +61,12 @@ welle-pi in daemon mode.
 | wheel left / right | `KEY_LEFT` 105 / `KEY_RIGHT` 106 | `LEFT` / `RIGHT` |
 | OK | `KEY_ENTER` 28, also `KEY_KPENTER` 96, `KEY_OK` 352, `KEY_SELECT` 353 | `ENTER` |
 | menu | `KEY_COMPOSE` 127, also `KEY_MENU` 139 | `MENU` |
-| home | `KEY_HOMEPAGE` 172, also `KEY_HOME` 102 | `MENU` (welle-pi has no home action) |
+| home | `KEY_HOMEPAGE` 172, also `KEY_HOME` 102 | `HOME` (back to the radio screen) |
 | back | `KEY_ESC` 1, also `KEY_BACK` 158, `KEY_EXIT` 174 | `LEFT` (what the lists take as back) |
 | on/off | `KEY_SLEEP` 142, also `KEY_POWER` 116, `KEY_POWER2` 356 | `QUIT` |
 | mouse mode switch | `KEY_F19` 189 | ignored |
-| volume +, volume -, mute | `KEY_VOLUMEUP` 115, `KEY_VOLUMEDOWN` 114, `KEY_MUTE` 113 | ignored, no action of welle-pi |
-| volume +, volume - (OSMC remote) | `KEY_EQUAL` 13, `KEY_MINUS` 12 | ignored, no action of welle-pi |
+| volume +, volume -, mute | `KEY_VOLUMEUP` 115, `KEY_VOLUMEDOWN` 114, `KEY_MUTE` 113 | `VOLUME_UP` / `VOLUME_DOWN` / `MUTE` |
+| volume +, volume - (OSMC remote) | `KEY_EQUAL` 13, `KEY_MINUS` 12 | `VOLUME_UP` / `VOLUME_DOWN` |
 | context (OSMC remote) | `KEY_C` 46 | `MENU` |
 | info (OSMC remote) | `KEY_I` 23 | `MENU` (welle-pi has no info screen) |
 | play/pause, stop (OSMC remote) | `KEY_PLAYPAUSE` 164, `KEY_STOP` 128 | ignored |
@@ -81,6 +81,10 @@ on/off. Both work without `map`. The dongle also reports `BTN_MOUSE` and
 `BTN_RIGHT` when the wheel is clicked in mouse mode; pointer buttons are
 ignored unless `map` gives them an action.
 
+The volume and mute keys turn the mixer of the sound card, as described in
+[welle-pi volume](welle-pi-volume.md); they are the only actions that do
+not change what is on the screen.
+
 Only presses are used; the autorepeat of a held key is ignored, so one
 press is one step.
 
@@ -91,7 +95,7 @@ Keys of the entry:
 | `device` | found | `/dev/input/eventN` to use |
 | `name` | any | case-insensitive part of the device name |
 | `grab` | `true` | `EVIOCGRAB` the device: the keys reach neither the console nor systemd-logind |
-| `map` | see above | key code or `KEY_*` name → `up`, `down`, `left`, `right`, `enter`, `menu`, `quit` or `none` |
+| `map` | see above | key code or `KEY_*` name → `up`, `down`, `left`, `right`, `enter`, `menu`, `quit`, `volume_up`, `volume_down`, `mute`, `home` or `none` |
 
 The on/off button sends `KEY_SLEEP`, the code that suspends a PC. Because
 the device is grabbed, logind does not see it: the button stops the radio

@@ -87,6 +87,10 @@ const ActionEntry ACTIONS[] = {
     {"enter", WELLE_PI_ENTER},
     {"menu", WELLE_PI_MENU},
     {"quit", WELLE_PI_QUIT},
+    {"volume_up", WELLE_PI_VOLUME_UP},
+    {"volume_down", WELLE_PI_VOLUME_DOWN},
+    {"mute", WELLE_PI_MUTE},
+    {"home", WELLE_PI_HOME},
     {"none", -1},
 };
 
@@ -117,14 +121,14 @@ void setDefaults(RemoteConfig& cfg)
 
     /* The other buttons, from a remote of this shape: home is HOMEPAGE, the
      * menu key is COMPOSE and back is ESC, the codes an Android style remote
-     * sends; KEY_MENU, KEY_BACK and KEY_EXIT are what others use. welle-pi has
-     * no HOME and no BACK action: MENU pops one screen and opens the menu on
-     * the radio screen, LEFT is what the station list and the menu take as
-     * back. */
-    cfg.map[KEY_HOMEPAGE] = WELLE_PI_MENU;
+     * sends; KEY_MENU, KEY_BACK and KEY_EXIT are what others use. Home returns
+     * to the radio screen from wherever the user is, MENU pops one screen and
+     * opens the menu on the radio screen, LEFT is what the station list and
+     * the menu take as back. */
+    cfg.map[KEY_HOMEPAGE] = WELLE_PI_HOME;
+    cfg.map[KEY_HOME] = WELLE_PI_HOME;
     cfg.map[KEY_COMPOSE] = WELLE_PI_MENU;
     cfg.map[KEY_MENU] = WELLE_PI_MENU;
-    cfg.map[KEY_HOME] = WELLE_PI_MENU;
     cfg.map[KEY_ESC] = WELLE_PI_LEFT;
     cfg.map[KEY_BACK] = WELLE_PI_LEFT;
     cfg.map[KEY_EXIT] = WELLE_PI_LEFT;
@@ -139,19 +143,20 @@ void setDefaults(RemoteConfig& cfg)
      * running any more, and it must not stop the radio that starts. */
     cfg.map[KEY_WAKEUP] = -1;
 
-    /* The button that switches the remote to mouse mode, and the volume
-     * buttons: recognised so that they do not look like unknown keys. The
-     * volume is not part of the input ABI, welle-pi has no volume action. */
+    /* The volume and mute buttons turn the mixer of the sound card, see
+     * docs/development/welle-pi-volume.md. The button that switches the
+     * remote to mouse mode is recognised so that it does not look like an
+     * unknown key. */
+    cfg.map[KEY_VOLUMEUP] = WELLE_PI_VOLUME_UP;
+    cfg.map[KEY_VOLUMEDOWN] = WELLE_PI_VOLUME_DOWN;
+    cfg.map[KEY_MUTE] = WELLE_PI_MUTE;
     cfg.map[KEY_F19] = -1;
-    cfg.map[KEY_VOLUMEUP] = -1;
-    cfg.map[KEY_VOLUMEDOWN] = -1;
-    cfg.map[KEY_MUTE] = -1;
 
     /* A remote of the same shape that sends keyboard keys rather than
      * consumer control codes (the OSMC remote sends minus and equal for the
      * volume, and play/pause and stop) - the same buttons as above. */
-    cfg.map[KEY_MINUS] = -1;
-    cfg.map[KEY_EQUAL] = -1;
+    cfg.map[KEY_EQUAL] = WELLE_PI_VOLUME_UP;
+    cfg.map[KEY_MINUS] = WELLE_PI_VOLUME_DOWN;
     cfg.map[KEY_PLAYPAUSE] = -1;
     cfg.map[KEY_STOP] = -1;
 
