@@ -311,3 +311,12 @@ bool actionFromName(const std::string& name, int& action)
     }
     return false;
 }
+
+bool repeatableAction(int action)
+{
+    /* the steps where a second one is what the user means: the station list
+     * scrolls and the volume ramps. A long press on enter, menu, home, mute or
+     * quit must not open several screens or stop the radio. */
+    return action == WELLE_PI_UP || action == WELLE_PI_DOWN
+        || action == WELLE_PI_VOLUME_UP || action == WELLE_PI_VOLUME_DOWN;
+}
