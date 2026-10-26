@@ -706,6 +706,18 @@ if (BUILD_WELLE_PI)
         target_link_libraries(volume_tests ${ALSA_LIBRARIES})
         add_test(NAME unit.volume COMMAND volume_tests)
         set_tests_properties(unit.volume PROPERTIES LABELS unit)
+
+        add_executable(evdev_tests
+            src/tests/evdev_tests.cpp
+            src/welle-pi/plugins/evdev/remote_config.cpp
+        )
+        target_include_directories(evdev_tests PRIVATE
+            src/welle-pi
+            src/welle-pi/plugins/evdev
+        )
+        target_compile_options(evdev_tests PRIVATE -UNDEBUG)
+        add_test(NAME unit.evdev COMMAND evdev_tests)
+        set_tests_properties(unit.evdev PROPERTIES LABELS unit)
     endif()
     if(UNIX AND NOT APPLE OR NOT WITH_APP_BUNDLE)
         INSTALL (TARGETS ${piExecutableName} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
