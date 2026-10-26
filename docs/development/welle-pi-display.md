@@ -53,7 +53,9 @@ On a terminal it clears the screen before each frame, which also wipes
 the messages on stderr: run `welle-pi 2>welle-pi.log`. All messages go to
 stderr, so stdout carries only the frames. Written to a file, the frames
 follow each other. As a daemon or with `-l`, stdout is the log and the
-terminal display draws nothing.
+terminal display draws nothing. On a terminal the focused row of a list is
+drawn in reverse video (`\033[7m`); written to a file it gets the `>` and
+`<` markers instead, like the character LCD.
 
 ## LCD plugin
 
@@ -82,8 +84,9 @@ default device `/dev/fb0`) draws the text with an 8x8 font
 U+007F, U+00A0 to U+00FF and U+2588 for the volume bar, `?` for the rest)
 on any framebuffer with 16
 or 32 bits per pixel, e.g. a 128 x 64 SSD1306 OLED gives 16 x 8
-characters. The kernel drives the panel; for an I2C SSD1306 on a Raspberry
-Pi:
+characters. It draws the focused row of a list in reverse video, so the
+item keeps the two columns the `>` and `<` markers would take. The kernel
+drives the panel; for an I2C SSD1306 on a Raspberry Pi:
 
 ```
 dtparam=i2c_arm=on
@@ -122,6 +125,14 @@ console off `fb0`.
   with the same label) shows its channel at the right. A focused name
   longer than its line shows its start and its end in turns, 1 s each
   (`NAME_SWITCH_MS`).
+* The focused item is the display's business: the screen calls
+  `Frame::mark(row)`, which sets `Frame::highlight`, and a display that
+  answers `IDisplay::canHighlight()` with true (the framebuffer, a
+  terminal) draws that row inverted, over the whole width. Where that is
+  not possible (character LCD, terminal written to a file) `mark()` returns
+  false and the screen wraps the item in `>` … `<` instead, computing it
+  with two columns less. `MultiDisplay` highlights only if every display in
+  it can, so a mirrored pair shows the same thing on both.
 
 ## Writing a display plugin
 
@@ -137,17 +148,19 @@ const char welle_pi_plugin_description[] = "SSD1306 128 x 64 on I2C";
 
 const int welle_pi_display_abi = WELLE_PI_DISPLAY_ABI;
 
-void* welle_pi_display_open(const char* config, int* cols, int* rows)
+void* welle_pi_display_open(const char* config, int* cols, int* rows, unsigned* features)
 {
     /* open the device, read the settings from config, switch it on */
     *cols = 20;
     *rows = 4;
+    *features = WELLE_PI_DISPLAY_HIGHLIGHT;   /* present() draws the row inverted */
     return device;          /* NULL: not usable, the entry is skipped */
 }
 
-void welle_pi_display_present(void* handle, const char* const* lines, int cols, int rows)
+void welle_pi_display_present(void* handle, const char* const* lines, int cols, int rows, int highlight)
 {
-    /* show rows lines of UTF-8, each exactly cols code points */
+    /* show rows lines of UTF-8, each exactly cols code points; in the row
+     * highlight draw the pixels the other way round */
 }
 
 void welle_pi_display_close(void* handle)
@@ -157,9 +170,15 @@ void welle_pi_display_close(void* handle)
 ```
 
 * `config` is the plugin's own entry as JSON text, including `plugin`.
-* `present()` is only called when the text changed, so a plugin can
-  write the frame as it is. When the display is mirrored next to a smaller
-  one, `cols` and `rows` are that smaller size: pad or centre as needed.
+* `features` is 0 or a combination of `WELLE_PI_DISPLAY_HIGHLIGHT` (bit
+  0). Without it the screens put `>` and `<` around the focused item
+  themselves, which is what a text-only display wants; a display that can
+  invert the row sets the bit and gets `highlight` in `present()`, `-1`
+  when nothing is focused.
+* `present()` is only called when the lines or the highlighted row
+  changed, so a plugin can write the frame as it is. When the display is
+  mirrored next to a smaller one, `cols` and `rows` are that smaller size:
+  pad or centre as needed.
 * All calls come from the UI thread; `present()` should not block for
   long, the UI ticks every 50 ms.
 * A graphical display (OLED, small TFT) draws the lines with a fixed font;
