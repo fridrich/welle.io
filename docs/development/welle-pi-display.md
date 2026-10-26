@@ -64,8 +64,10 @@ backpack). The plugin reads the size from
 `/sys/devices/platform/auxdisplay/of_node/display-{width,height}-chars`
 and converts UTF-8 to the HD44780 character set (ROM A00,
 `hd44780_charset.h`; accented letters without their own code become the
-plain letter, the rest `?`). The code comes from
-[liblcd](https://github.com/fridrich/lcd).
+plain letter, the rest `?`). No ROM has the block of the volume bar, so on
+start-up the plugin puts one into the first user defined character
+(CGRAM 1, charlcd's `ESC[LG` escape) and U+2588 becomes that character. The
+code comes from [liblcd](https://github.com/fridrich/lcd).
 
 It writes only the rows that changed, so the I2C bus is not busy with
 unchanged text, switches the backlight on when welle-pi starts and off
