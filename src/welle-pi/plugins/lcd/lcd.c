@@ -74,7 +74,9 @@ static size_t to_hd44780(const char* s, char* out, size_t size)
         const struct hd44780_char* m = more ? NULL :
             bsearch(&cp, hd44780_charset, sizeof hd44780_charset / sizeof *hd44780_charset,
                     sizeof *hd44780_charset, by_cp);
-        for (const char* r = m ? m->rom : "?"; *r; ++r) out[n++] = *r;
+        /* U+2588, the block of the volume bar, is in no ROM: it is CGRAM
+         * character 1, which define_block() puts there */
+        for (const char* r = m ? m->rom : cp == 0x2588 ? "\x01" : "?"; *r; ++r) out[n++] = *r;
     }
     return n;
 }
@@ -82,6 +84,17 @@ static size_t to_hd44780(const char* s, char* out, size_t size)
 static void put(struct lcd* lcd, const char* s, size_t len)
 {
     if (write(lcd->fd, s, len) < 0) perror("lcd");
+}
+
+/* The ROM has no block for the volume bar (U+2588 in ui_manager.cpp), but
+ * the HD44780 has eight characters of its own: charlcd defines one with
+ * "ESC [ L G <0-7> <8 rows of 5 dots, 16 hex digits>;", here character 1 as
+ * a filled cell with a gap under it. A driver without CGRAM drops the
+ * sequence. */
+static void define_block(struct lcd* lcd)
+{
+    static const char escape[] = "\x1b[LG1" "1f1f1f1f1f1f1f00" ";";
+    put(lcd, escape, sizeof escape - 1);
 }
 
 /* {"plugin": "lcd"}; size from the device tree */
@@ -100,6 +113,7 @@ void* welle_pi_display_open(const char* config, int* cols, int* rows)
     lcd->rows = *rows;
     lcd->shown = calloc((size_t)*rows, sizeof *lcd->shown);
     put(lcd, "\x1b[2J\x1b[L+", 8);   /* clear, backlight on */
+    define_block(lcd);
     return lcd;
 }
 
