@@ -84,7 +84,7 @@ static void put_pixel(struct fb* fb, unsigned x, unsigned y, int on)
 }
 
 /* config e.g. {"plugin":"fb","device":"/dev/fb1"}, default /dev/fb0 */
-void* welle_pi_display_open(const char* config, int* cols, int* rows)
+void* welle_pi_display_open(const char* config, int* cols, int* rows, unsigned* features)
 {
     char device[256] = "/dev/fb0";
     const char* key = strstr(config, "\"device\":\"");
@@ -129,20 +129,29 @@ void* welle_pi_display_open(const char* config, int* cols, int* rows)
     memset(fb->mem, 0, fb->size);
     *cols = (int)(fb->width / 8);
     *rows = (int)(fb->height / 8);
+    *features = WELLE_PI_DISPLAY_HIGHLIGHT;   /* reverse video is just pixels */
     return fb;
 }
 
-void welle_pi_display_present(void* handle, const char* const* lines, int cols, int rows)
+void welle_pi_display_present(void* handle, const char* const* lines, int cols, int rows, int highlight)
 {
     struct fb* fb = handle;
     memset(fb->mem, 0, fb->size);
     for (int row = 0; row < rows; row++) {
+        const int inverse = row == highlight;
+        if (inverse) {
+            /* reverse video: the focused row in the foreground colour, its
+             * glyphs in the background colour */
+            for (unsigned y = 0; y < 8; y++)
+                for (int x = 0; x < cols * 8; x++)
+                    put_pixel(fb, x, row * 8 + y, 1);
+        }
         const char* s = lines[row];
         for (int col = 0; col < cols && *s; col++) {
             const char* g = glyph(s, &s);
             for (unsigned y = 0; y < 8; y++)
                 for (unsigned x = 0; x < 8; x++)
-                    put_pixel(fb, col * 8 + x, row * 8 + y, (g[y] >> x) & 1);
+                    put_pixel(fb, col * 8 + x, row * 8 + y, (((g[y] >> x) & 1) ^ inverse));
         }
     }
 }
