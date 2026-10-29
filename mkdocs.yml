@@ -137,6 +137,7 @@ nav:
           - Linux kernel SDR input: development/v4l2-sdr.md
           - Coherent demodulation: development/coherent-demodulation.md
           - Receiver fixes (rtl_tcp, SoapySDR): development/receiver-fixes.md
+          - Receiver validation log: development/test-validation.md
   - About:
       - About welle.io: info.md
       - Contact: contact.md
