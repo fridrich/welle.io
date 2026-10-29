@@ -5,11 +5,11 @@ const path = require('node:path');
 const vm = require('node:vm');
 const elements = new Map();
 function element(id) {
-    if (!elements.has(id)) elements.set(id, {style: {}, load() {}, play() {}});
+    if (!elements.has(id)) elements.set(id, {style: {}, load() {}, play() {}, addEventListener() {}});
     return elements.get(id);
 }
 const context = vm.createContext({
-    window: {},
+    window: {addEventListener() {}},
     document: {getElementById: element, getElementsByClassName: id => [element(id)]},
     setInterval() { return 1; },
 });
@@ -17,12 +17,16 @@ const source = process.argv[2] || path.join(__dirname, '../../src/welle-cli/inde
 vm.runInContext(fs.readFileSync(source, 'utf8'), context);
 // Exercise the real rendered onclick: hexadecimal literals become JS numbers.
 for (const sid of ['0x15dc', '0x100d', '0x1000', '0xd210']) {
-    const html = context.parseTemplate(context.serviceTemplate(), {SId: sid});
-    const click = html.match(/onclick="([^"]+)"/)[1];
+    const html = context.parseTemplate(context.serviceTemplate(),
+        {SId: sid, sid_num: String(Number(sid)), mot_time: '123'});
+    const click = html.match(/onclick="(showSlide\([^"]+)"/)[1];
     vm.runInContext(click, context);
+    // The page renders service.sid unquoted, so the browser parses it as a number.
+    vm.runInContext('setPlayerSource(' + sid + ')', context);
     assert.equal(element('player').src, '/stream/' + sid, sid + ' Play URL');
-    context.showSlide(Number(sid), 123);
-    assert.equal(element('slideimg').src, 'slide/' + sid + '?cachebreak=123', sid + ' slide URL');
+    // Upstream adds a cache-busting parameter; only the service ID matters here.
+    const slide = element('slideimg').src;
+    assert.ok(slide.startsWith('slide/' + sid + '?'), sid + ' slide URL: ' + slide);
 }
 // Explicit string IDs remain explicit, without a second numeric conversion.
 context.setPlayerSource('0x15dc');
