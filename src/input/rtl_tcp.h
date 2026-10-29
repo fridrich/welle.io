@@ -36,6 +36,7 @@
 #include <array>
 #include <atomic>
 #include "iq_write_stats.h"
+#include "iq_transfer.h"
 #include <string>
 #include <thread>
 #include <vector>
@@ -95,6 +96,7 @@ private:
     // Lifetime totals: observe loss without changing the existing buffering policy.
     IQWriteStats networkWrites, decoderWrites;
     std::atomic<uint64_t> shortReads{0}, bufferResets{0};
+    std::mutex bufferTransferMutex; // Serialize reconnect resets with capacity checks/transfers.
     std::mutex mutex;
     Socket sock;
     std::thread receiveThread;
@@ -122,7 +124,7 @@ private:
     uint16_t serverPort = 1234;
 
     bool firstData = true;
-    bool firstFilledNetworkBuffer = false;
+    std::atomic<bool> firstFilledNetworkBuffer{false};
     int64_t oldTime_us = 0;
     int64_t nextStop_us = 0;
     dongle_info_t dongleInfo;
