@@ -103,28 +103,30 @@ window.onload = function() {
 
     var ch = document.getElementById("channelselector");
 
-    for (i in channels) {
-        var opt = document.createElement("option");
-        opt.text = channels[i];
-        ch.options.add(opt, -1);
-    }
+    if (ch) {
+        for (i in channels) {
+            var opt = document.createElement("option");
+            opt.text = channels[i];
+            ch.options.add(opt, -1);
+        }
 
-    ch.onchange = function() {
-        var channel = document.getElementById("channelselector").value;
-        currentPlayingSid = null;
-        var xhr = new XMLHttpRequest();
-        xhr.open("POST", '/channel', true);
-        xhr.setRequestHeader("Content-type", "text/plain");
-        xhr.timeout = 8000;
-        ch.disabled = true;
-        var enableCh = function() { ch.disabled = false; };
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState == 4) { enableCh(); }
+        ch.onchange = function() {
+            var channel = ch.value;
+            currentPlayingSid = null;
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", '/channel', true);
+            xhr.setRequestHeader("Content-type", "text/plain");
+            xhr.timeout = 8000;
+            ch.disabled = true;
+            var enableCh = function() { ch.disabled = false; };
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == 4) { enableCh(); }
+            };
+            xhr.ontimeout = enableCh;
+            xhr.onerror = enableCh;
+            xhr.send(channel);
         };
-        xhr.ontimeout = enableCh;
-        xhr.onerror = enableCh;
-        xhr.send(channel);
-    };
+    }
 
     var fftw = document.getElementById("fftwindowselector");
 
@@ -171,7 +173,10 @@ function refreshChannel() {
     var r = new XMLHttpRequest();
     r.onreadystatechange = function () {
         if (r.readyState != 4 || r.status != 200) return;
-        document.getElementById("channelselector").value = r.responseText;
+        var selector = document.getElementById("channelselector");
+        var value = document.getElementById("channelvalue");
+        if (selector) selector.value = r.responseText;
+        if (value) value.textContent = r.responseText;
     };
     r.open("GET", "/channel", true);
     r.send()
@@ -459,9 +464,15 @@ function playerLoad() {
     document.getElementById("player").play();
 }
 
+function serviceIdForUrl(sid) {
+    // Inline handlers receive hexadecimal literals as JavaScript numbers.
+    // Preserve their meaning when passing the ID back to the HTTP parser.
+    return typeof sid === "number" ? "0x" + sid.toString(16) : sid;
+}
+
 function setPlayerSource(sid) {
     currentPlayingSid = sid;
-    document.getElementById("player").src = "/stream/" + sid;
+    document.getElementById("player").src = "/stream/" + serviceIdForUrl(sid);
     playerLoad();
 }
 
@@ -479,7 +490,7 @@ var slideDls = document.getElementById("slide-dls");
 function showSlide(sid, last_update_time) {
     currentSlideSid = sid;
     currentSlideLastUpdate = last_update_time;
-    slideimg.src = "slide/" + sid + "?t=" + Date.now();
+    slideimg.src = "slide/" + serviceIdForUrl(sid) + "?t=" + Date.now();
     var cached = slsCache[String(sid)] || slsCache["0x" + sid.toString(16).toUpperCase()];
     slideStationName.textContent = (cached && cached.stationName) ? cached.stationName : "";
     slideDls.textContent = (cached && cached.dls) ? cached.dls : "";
@@ -956,5 +967,3 @@ function populateConstellation() {
     r.responseType = "arraybuffer";
     r.send(null);
 }
-
-

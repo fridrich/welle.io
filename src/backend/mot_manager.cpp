@@ -157,12 +157,13 @@ bool ParseMOTHeaderExtension(const uint8_t* ext_data, size_t ext_len, MOT_FILE& 
 			break;
 		}
 
-		if(offset + data_len - 1 >= data.size())
+		if(offset > data.size() || data_len > data.size() - offset)
 			return false;
 
 		// process parameter
 		switch(param_id) {
         case 0x04:	// ExpireTime
+            if (data_len < 1) return false;
             file.expire_time = data[offset]; // TODO not tested
             break;
 		case 0x05:	// TriggerTime

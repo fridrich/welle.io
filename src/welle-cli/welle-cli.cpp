@@ -292,6 +292,7 @@ struct options_t {
     string antenna = "";
     int gain = -1;
     string channel = "10B";
+    bool channel_given = false;
     string iqsource = "";
     string programme = "GRRIF";
     string frontend = "auto";
@@ -437,6 +438,7 @@ options_t parse_cmdline(int argc, char **argv)
                 break;
             case 'c':
                 options.channel = optarg;
+                options.channel_given = true;
                 break;
             case 'C':
                 options.num_decoders_in_carousel = atoi(optarg);
@@ -662,8 +664,8 @@ int main(int argc, char **argv)
             return 1;
         }
 
-        WebRadioInterface wri(*in, options.web_port, ds, options.rro);
-        wri.serve();
+        WebRadioInterface wri(*in, options.web_port, ds, options.rro, !options.channel_given);
+        return wri.serve();
     }
     else {
         RadioReceiver rx(ri, *in, options.rro);

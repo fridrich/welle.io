@@ -129,7 +129,7 @@ select:focus {
 }
 
 /* Le sélecteur de canal est court (ex: "5A") : pas d'étirement */
-#channelselector {
+#channelselector, #channelvalue {
     width: auto;
     flex: 0 0 auto;
 }
@@ -662,7 +662,7 @@ canvas {
         padding: 12px 36px 12px 14px;
         font-size: 16px;
     }
-    #channelselector {
+    #channelselector, #channelvalue {
         width: auto;
     }
     .channel-ctrl {
@@ -932,7 +932,7 @@ canvas {
                     <div class="control-group">
                         <label for="channelselector">Channel</label>
                         <div class="channel-ctrl">
-                            <select id="channelselector" name="channel"></select>
+                            <!-- channel-control -->
                             <button type="button" class="advanced-toggle" id="advancedToggle" title="Réglages avancés">Param. ⚙</button>
                         </div>
                     </div>
