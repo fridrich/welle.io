@@ -51,6 +51,7 @@
 #include <locale>
 #endif
 
+#include "iq_stream_stats.h"
 #include "dab-constants.h"
 #include "radio-controller.h"
 #include "ringbuffer.h"
@@ -66,6 +67,8 @@ class CVirtualInput : public InputInterface {
 public:
     virtual ~CVirtualInput() { stopRecording(); }
     virtual CDeviceID getID(void) = 0;
+    // Inputs without measured byte counters must not report a configured rate.
+    virtual IQStreamStats getIQStreamStats() const { return {}; }
 
     /* I/Q recording: the samples the device passes to the decoder
      * (2.048 MS/s) are written to a file. A device calls
