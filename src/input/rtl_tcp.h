@@ -35,6 +35,7 @@
 
 #include <array>
 #include <atomic>
+#include "iq_write_stats.h"
 #include <string>
 #include <thread>
 #include <vector>
@@ -92,6 +93,9 @@ private:
     void handleDisconnect(void);
     void joinThreads(void);
 
+    // Lifetime totals: observe loss without changing the existing buffering policy.
+    IQWriteStats networkWrites, decoderWrites;
+    std::atomic<uint64_t> shortReads{0}, bufferResets{0};
     std::mutex mutex;
     Socket sock;
     std::thread receiveThread;
