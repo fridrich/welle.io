@@ -8,7 +8,7 @@ for (const selectable of [false, true]) {
  const elements = new Map(), requests = [];
  function element(id) {
   if ((id === 'channelselector' && !selectable) || (id === 'channelvalue' && selectable)) return null;
-  if (!elements.has(id)) elements.set(id, {style: {}, options: {items: [], add(o) {this.items.push(o);}}, getElementsByClassName(name) {return [element(id+'/'+name)];}});
+  if (!elements.has(id)) elements.set(id, {style: {}, options: {items: [], add(o) {this.items.push(o);}}, getElementsByClassName(name) {return [element(id+'/'+name)];}, addEventListener() {}});
   return elements.get(id);
  }
  function XHR() {
@@ -21,8 +21,10 @@ for (const selectable of [false, true]) {
    }
   };
  }
- const c=vm.createContext({window:{},document:{getElementById:element,getElementsByClassName:id=>[element(id)],createElement:()=>({})},XMLHttpRequest:XHR,setInterval:()=>1});
+ const c=vm.createContext({window:{addEventListener(){}},document:{getElementById:element,getElementsByClassName:id=>[element(id)],createElement:()=>({})},XMLHttpRequest:XHR,setInterval:()=>1});
  vm.runInContext(source,c);c.window.onload();
+ // The page updates the channel from the 2 s timer; run one tick by hand.
+ vm.runInContext('refreshChannel()',c);
  assert.equal(requests.filter(r=>r.method==='POST').length,0);
  if (selectable) {
   assert.equal(element('channelselector').value,'5C');
