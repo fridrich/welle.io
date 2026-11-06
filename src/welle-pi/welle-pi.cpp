@@ -88,6 +88,7 @@ using namespace std;
 /* Set by the signal handler, polled by all the loops that would otherwise
  * run forever. */
 static volatile sig_atomic_t quit_requested = 0;
+static volatile sig_atomic_t received_signal = 0;
 
 /* The input device failed and the receiver stopped. welle-pi cannot do
  * anything about it, it has to terminate with an error so that whoever
@@ -466,8 +467,8 @@ struct options_t {
 
 static void handle_signal(int signum)
 {
-    (void)signum;
     quit_requested = 1;
+    received_signal = signum;
 }
 
 static void install_signal_handlers()
@@ -1224,6 +1225,11 @@ int main(int argc, char **argv)
     }
 
     cerr << "Shutting down" << endl;
+
+    if (received_signal != 0) {
+        signal(received_signal, SIG_DFL);
+        raise(received_signal);
+    }
 
     return input_failure ? 1 : 0;
 }
