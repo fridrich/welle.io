@@ -719,6 +719,16 @@ if (BUILD_WELLE_PI)
     if(UNIX AND NOT APPLE OR NOT WITH_APP_BUNDLE)
         INSTALL (TARGETS ${piExecutableName} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
         INSTALL (FILES src/welle-pi/doc/man/welle-pi.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1/)
+
+        # The unit is installed, not enabled: systemctl enable welle-pi is the
+        # admin's decision. systemd reads /usr/lib and /usr/local/lib, never
+        # CMAKE_INSTALL_LIBDIR (lib64), so "lib" is deliberate here.
+        set(WELLE_PI_SYSTEMD_UNIT_DIR "lib/systemd/system" CACHE PATH "Directory for the welle-pi systemd unit")
+        if(NOT WELLE_PI_SYSTEMD_UNIT_DIR)
+            set(WELLE_PI_SYSTEMD_UNIT_DIR "lib/systemd/system")
+        endif()
+        INSTALL (FILES scripts/welle-pi.service DESTINATION ${WELLE_PI_SYSTEMD_UNIT_DIR})
+
         # for plugins built elsewhere
         INSTALL (FILES src/welle-pi/plugin.h src/welle-pi/input_plugin.h src/welle-pi/display_plugin.h
                  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/welle-pi)
