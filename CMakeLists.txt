@@ -330,6 +330,7 @@ set(welle_cli_sources
 
 set(welle_pi_sources
     src/welle-pi/welle-pi.cpp
+    src/welle-pi/options.cpp
     src/welle-pi/config_manager.cpp
     src/welle-pi/input_queue.cpp
     src/welle-pi/input_stdin.cpp
@@ -715,6 +716,15 @@ if (BUILD_WELLE_PI)
         target_compile_options(config_tests PRIVATE -UNDEBUG)
         add_test(NAME unit.config COMMAND config_tests)
         set_tests_properties(unit.config PROPERTIES LABELS unit)
+
+        add_executable(options_tests
+            src/tests/options_tests.cpp
+            src/welle-pi/options.cpp
+        )
+        target_include_directories(options_tests PRIVATE src/welle-pi)
+        target_compile_options(options_tests PRIVATE -UNDEBUG)
+        add_test(NAME unit.options COMMAND options_tests)
+        set_tests_properties(unit.options PROPERTIES LABELS unit)
     endif()
     if(UNIX AND NOT APPLE OR NOT WITH_APP_BUNDLE)
         INSTALL (TARGETS ${piExecutableName} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

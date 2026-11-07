@@ -15,23 +15,19 @@ ExecStart=/usr/bin/env welle-pi
 #   useradd --system --shell /usr/sbin/nologin --groups audio welle-pi
 # and uncomment the next two lines. No home directory is needed: settings
 # come from /etc/welle-pi/welle-pi.json and the cache from CacheDirectory=
-# below. ExecStopPost runs as root (+/bin/sh), so ALLOW_SHUTDOWN=1 powers
-# the host off even for an unprivileged service user.
+# below.
 #User=welle-pi
 #SupplementaryGroups=audio
-
-# Safe, unprivileged runtime environment defaults.
-# Set ALLOW_SHUTDOWN=1 to enable host power-off on clean menu exit.
-Environment=ALLOW_SHUTDOWN=0
 
 # systemd creates /var/cache/welle-pi and exports it as $CACHE_DIRECTORY,
 # which welle-pi uses for its station cache. Owned by the service user, so
 # it also works for the unprivileged variant above without a home directory.
 CacheDirectory=welle-pi
 
-# Clean shutdown post-stop hook. Checks if process exited cleanly on its own
-# and ALLOW_SHUTDOWN environment variable is set to 1.
-ExecStopPost=+/bin/sh -c 'if [ "$EXIT_CODE" = "exited" ] && [ "$EXIT_STATUS" = "0" ] && [ "$ALLOW_SHUTDOWN" = "1" ]; then systemctl poweroff; fi'
+# To power the host off when the menu quits welle-pi, set "exit_command" in
+# welle-pi.json, for example "systemctl poweroff". It runs with the rights
+# of the service user, so the unprivileged variant needs root or a polkit
+# rule. A signal, a crash or a failed input does not run it.
 
 # Automatically restart if the binary crashes, but do not reboot/shutdown.
 Restart=on-failure
