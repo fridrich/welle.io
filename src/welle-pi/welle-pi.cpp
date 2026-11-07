@@ -634,6 +634,15 @@ static void runAutoScanner(RadioReceiver& rx, CVirtualInput* in, RadioInterface&
 
     config.clearStations();
 
+    int conn_wait = 150;
+    while (!in->isConnected() && in->is_ok() && conn_wait > 0 && !stop_requested()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        conn_wait--;
+    }
+    if (stop_requested() || !in->is_ok() || !in->isConnected()) {
+        return;
+    }
+
     for (const auto& channel : SCAN_CHANNELS) {
         if (stop_requested()) break;
 
@@ -870,6 +879,16 @@ int main(int argc, char **argv)
         rx.restart(false);
         ri.resetSyncWatchdog();
         ri.synced = false;
+
+        int conn_wait = 150;
+        while (!in->isConnected() && in->is_ok() && conn_wait > 0 && !stop_requested()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            conn_wait--;
+        }
+
+        if (input_failure || !in->is_ok() || !in->isConnected()) {
+            return TuneResult::DriverError;
+        }
 
         int sync_wait = 30;
         while (!ri.synced && sync_wait > 0 && !stop_requested()) {
